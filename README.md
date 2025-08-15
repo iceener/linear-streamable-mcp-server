@@ -6,7 +6,7 @@ A streamable HTTP MCP server for Linear that lets you manage issues, projects, t
 
 Below is a comparison between the official Linear MCP (top) and this MCP (bottom).
 
-<img src="docs/comparsion.gif" width="800" />
+<img src="docs/comparison.gif" width="800" />
 
 ### Notice
 
