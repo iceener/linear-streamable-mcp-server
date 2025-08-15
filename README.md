@@ -4,6 +4,8 @@
 
 A streamable HTTP MCP server for Linear that lets you manage issues, projects, teams, users, comments, and cycles — locally or remotely.
 
+<img src="docs/comparsion.gif" width="800" />
+
 ### Notice
 
 This repo works in two ways:
