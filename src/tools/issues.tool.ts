@@ -1,32 +1,32 @@
-import { LinearDocument } from '@linear/sdk';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { config } from '../config/env.ts';
-import { toolsMetadata } from '../config/metadata.ts';
-import { getCurrentAbortSignal } from '../core/context.ts';
+import { LinearDocument } from "@linear/sdk";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { config } from "../config/env.ts";
+import { toolsMetadata } from "../config/metadata.ts";
+import { getCurrentAbortSignal } from "../core/context.ts";
 import {
   CreateIssuesInputSchema,
   GetIssuesInputSchema,
   ListIssuesInputSchema,
   ListMyIssuesInputSchema,
   UpdateIssuesInputSchema,
-} from '../schemas/inputs.ts';
+} from "../schemas/inputs.ts";
 import {
   CreateIssuesOutputSchema,
   GetIssueOutputSchema,
   GetIssuesOutputSchema,
   ListIssuesOutputSchema,
   UpdateIssuesOutputSchema,
-} from '../schemas/outputs.ts';
-import { getLinearClient } from '../services/linear-client.ts';
-import { normalizeIssueFilter } from '../utils/filters.ts';
-import { makeConcurrencyGate } from '../utils/limits.ts';
-import { logger } from '../utils/logger.ts';
-import { mapIssueNodeToListItem } from '../utils/mappers.ts';
+} from "../schemas/outputs.ts";
+import { getLinearClient } from "../services/linear-client.ts";
+import { normalizeIssueFilter } from "../utils/filters.ts";
+import { makeConcurrencyGate } from "../utils/limits.ts";
+import { logger } from "../utils/logger.ts";
+import { mapIssueNodeToListItem } from "../utils/mappers.ts";
 import {
   previewLinesFromItems,
   summarizeBatch,
   summarizeList,
-} from '../utils/messages.ts';
+} from "../utils/messages.ts";
 
 export const listIssuesTool = {
   name: toolsMetadata.list_issues.name,
@@ -38,18 +38,21 @@ export const listIssuesTool = {
     if (!parsed.success) {
       return {
         isError: true,
-        content: [{ type: 'text', text: parsed.error.message }],
+        content: [{ type: "text", text: parsed.error.message }],
       };
     }
     const client = getLinearClient();
     const first = parsed.data.limit ?? 20;
-    const after = parsed.data.cursor;
+    const after =
+      parsed.data.cursor && parsed.data.cursor.trim() !== ""
+        ? parsed.data.cursor
+        : undefined;
     const orderBy =
-      parsed.data.orderBy === 'updatedAt'
+      parsed.data.orderBy === "updatedAt"
         ? LinearDocument.PaginationOrderBy.UpdatedAt
-        : parsed.data.orderBy === 'createdAt'
-          ? LinearDocument.PaginationOrderBy.CreatedAt
-          : undefined;
+        : parsed.data.orderBy === "createdAt"
+        ? LinearDocument.PaginationOrderBy.CreatedAt
+        : undefined;
 
     let conn: {
       nodes: Array<{
@@ -72,7 +75,7 @@ export const listIssuesTool = {
       // Build keyword-aware filter
       const keywordTokens = [
         ...(parsed.data.keywords ?? []),
-        ...(parsed.data.q ?? '')
+        ...(parsed.data.q ?? "")
           .split(/\s+/)
           .map((s) => s.trim())
           .filter(Boolean),
@@ -86,7 +89,8 @@ export const listIssuesTool = {
         : undefined;
       const baseFilter =
         normalizeIssueFilter(
-          (parsed.data.filter as Record<string, unknown> | undefined) ?? undefined,
+          (parsed.data.filter as Record<string, unknown> | undefined) ??
+            undefined
         ) ?? {};
       const mergedFilter = keywordOr
         ? { ...(baseFilter as object), ...(keywordOr as object) }
@@ -121,7 +125,7 @@ export const listIssuesTool = {
     } catch (error) {
       return {
         isError: true,
-        content: [{ type: 'text', text: (error as Error).message }],
+        content: [{ type: "text", text: (error as Error).message }],
       };
     }
     const items = [] as Array<{
@@ -157,7 +161,7 @@ export const listIssuesTool = {
       items as unknown as Record<string, unknown>[],
       (i) => {
         const idf = (i.identifier as string | undefined) ?? (i.id as string);
-        const ttl = String((i.title as string) ?? '');
+        const ttl = String((i.title as string) ?? "");
         const st = (i.stateName as string | undefined) ?? (i.stateId as string);
         const proj = (i.projectName as string | undefined) ?? undefined;
         const asg =
@@ -169,7 +173,7 @@ export const listIssuesTool = {
           ? (i.labels as Array<{ id: string; name: string }>)
               .map((l) => l.name)
               .slice(0, 5)
-              .join(', ')
+              .join(", ")
           : undefined;
         const title = url ? `[${idf} — ${ttl}](${url})` : `${idf} '${ttl}'`;
         const parts: string[] = [`state ${st}`];
@@ -185,8 +189,8 @@ export const listIssuesTool = {
         if (asg) {
           parts.push(`assignee ${asg}`);
         }
-        return `${title} — ${parts.join('; ')}`.trim();
-      },
+        return `${title} — ${parts.join("; ")}`.trim();
+      }
     );
     const filterHints: string[] = [];
     if (parsed.data.orderBy) {
@@ -201,15 +205,15 @@ export const listIssuesTool = {
     const nextSteps: string[] = [];
     if (items.length > 0) {
       nextSteps.push(
-        'Use list_issues to fetch details by id (UUID) or by number+team.key/team.id (limit=1); pass cursor to fetch next page; use q/keywords for title search; refine filters using comparators (eq/neq/lt/lte/gt/gte/in/nin, containsIgnoreCase, startsWith/endsWith, null) and relationship fields (e.g., assignee.email, labels.name).',
+        "Use list_issues to fetch details by id (UUID) or by number+team.key/team.id (limit=1); pass cursor to fetch next page; use q/keywords for title search; refine filters using comparators (eq/neq/lt/lte/gt/gte/in/nin, containsIgnoreCase, startsWith/endsWith, null) and relationship fields (e.g., assignee.email, labels.name)."
       );
     } else {
       nextSteps.push(
-        "Refine filters: try state.type 'started' (alias: active), remove archived, or search by q/keywords.",
+        "Refine filters: try state.type 'started' (alias: active), remove archived, or search by q/keywords."
       );
     }
     const message = summarizeList({
-      subject: 'Issues',
+      subject: "Issues",
       count: items.length,
       limit: first,
       nextCursor: structured.nextCursor,
@@ -222,26 +226,28 @@ export const listIssuesTool = {
       .map((i) => {
         const idf = (i.identifier ?? i.id) as string;
         const state = (i.stateName ?? i.stateId) as string;
-        const labels = i.labels.map((l) => l.name).join(', ');
+        const labels = i.labels.map((l) => l.name).join(", ");
         const proj = i.projectName
-          ? `\n  project: ${i.projectName} (${i.projectId ?? ''})`
-          : '';
+          ? `\n  project: ${i.projectName} (${i.projectId ?? ""})`
+          : "";
         const asg = i.assigneeName
-          ? `\n  assignee: ${i.assigneeName} (${i.assigneeId ?? ''})`
-          : '';
-        const due = i.dueDate ? `\n  due: ${i.dueDate}` : '';
-        const lab = labels ? `\n  labels: ${labels}` : '';
+          ? `\n  assignee: ${i.assigneeName} (${i.assigneeId ?? ""})`
+          : "";
+        const due = i.dueDate ? `\n  due: ${i.dueDate}` : "";
+        const lab = labels ? `\n  labels: ${labels}` : "";
         const url = i.url ?? undefined;
         const header = url
           ? `- [${idf} — ${i.title}](${url})`
           : `- ${idf} — ${i.title}`;
         return `<ove id="${i.id}" identifier="${idf}">\n${header}\n  state: ${state} (${i.stateId})${proj}${asg}${due}${lab}\n</ove>`;
       })
-      .join('\n');
+      .join("\n");
     const full = details ? `${message}\n\n${details}` : message;
-    const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: full }];
+    const parts: Array<{ type: "text"; text: string }> = [
+      { type: "text", text: full },
+    ];
     if (config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
-      parts.push({ type: 'text', text: JSON.stringify(structured) });
+      parts.push({ type: "text", text: JSON.stringify(structured) });
     }
     return { content: parts, structuredContent: structured };
   },
@@ -250,17 +256,17 @@ export const listIssuesTool = {
 // Removed singular get_issue; use get_issues for batch retrieval.
 
 export const getIssuesTool = {
-  name: 'get_issues',
-  title: 'Get Issues (Batch)',
+  name: "get_issues",
+  title: "Get Issues (Batch)",
   description:
-    'Fetch multiple issues by id (UUID or short ID like ENG-123) and return per-item results plus a summary.',
+    "Fetch multiple issues by id (UUID or short ID like ENG-123) and return per-item results plus a summary.",
   inputSchema: GetIssuesInputSchema.shape,
   handler: async (args: unknown): Promise<CallToolResult> => {
     const parsed = GetIssuesInputSchema.safeParse(args);
     if (!parsed.success) {
       return {
         isError: true,
-        content: [{ type: 'text', text: parsed.error.message }],
+        content: [{ type: "text", text: parsed.error.message }],
       };
     }
     const client = getLinearClient();
@@ -290,23 +296,27 @@ export const getIssuesTool = {
           identifier: issue.identifier ?? undefined,
           assignee: issue.assignee
             ? {
-                id: (issue.assignee as unknown as { id?: string })?.id ?? undefined,
+                id:
+                  (issue.assignee as unknown as { id?: string })?.id ??
+                  undefined,
                 name:
-                  (issue.assignee as unknown as { name?: string })?.name ?? undefined,
+                  (issue.assignee as unknown as { name?: string })?.name ??
+                  undefined,
               }
             : undefined,
           state: issue.state
             ? {
-                id: (issue.state as unknown as { id?: string })?.id ?? '',
-                name: (issue.state as unknown as { name?: string })?.name ?? '',
+                id: (issue.state as unknown as { id?: string })?.id ?? "",
+                name: (issue.state as unknown as { name?: string })?.name ?? "",
                 type: (issue.state as unknown as { type?: string })?.type,
               }
             : undefined,
           project: issue.project
             ? {
-                id: (issue.project as unknown as { id?: string })?.id ?? '',
+                id: (issue.project as unknown as { id?: string })?.id ?? "",
                 name:
-                  (issue.project as unknown as { name?: string })?.name ?? undefined,
+                  (issue.project as unknown as { name?: string })?.name ??
+                  undefined,
               }
             : undefined,
           labels,
@@ -321,8 +331,8 @@ export const getIssuesTool = {
           issue: structured,
         });
       } catch (error) {
-        await logger.error('get_issues', {
-          message: 'Failed to fetch issue',
+        await logger.error("get_issues", {
+          message: "Failed to fetch issue",
           id,
           error: (error as Error).message,
         });
@@ -330,7 +340,7 @@ export const getIssuesTool = {
           index: i,
           ok: false,
           error: (error as Error).message,
-          code: 'LINEAR_FETCH_ERROR',
+          code: "LINEAR_FETCH_ERROR",
         });
       }
     }
@@ -343,15 +353,15 @@ export const getIssuesTool = {
       .filter((r) => r.ok)
       .map((r) => r.identifier ?? r.id ?? `item[${r.index}]`);
     const messageBase = summarizeBatch({
-      action: 'Fetched issues',
+      action: "Fetched issues",
       ok: summary.ok,
       total: ids.length,
       okIdentifiers: okIds as string[],
       failures: results
         .filter((r) => !r.ok)
-        .map((r) => ({ index: r.index, id: undefined, error: r.error ?? '' })),
+        .map((r) => ({ index: r.index, id: undefined, error: r.error ?? "" })),
       nextSteps: [
-        'Call update_issues to modify fields, or list_issues to discover more.',
+        "Call update_issues to modify fields, or list_issues to discover more.",
       ],
     });
     const previewLines = results
@@ -368,18 +378,20 @@ export const getIssuesTool = {
         const stateNm = it.state?.name as string | undefined;
         const assNm = it.assignee?.name as string | undefined;
         return `${it.identifier ?? it.id} '${it.title}'${
-          stateNm ? ` — state ${stateNm}` : ''
-        }${assNm ? `, assignee ${assNm}` : ''}`;
+          stateNm ? ` — state ${stateNm}` : ""
+        }${assNm ? `, assignee ${assNm}` : ""}`;
       });
     const fullMessage =
       previewLines.length > 0
-        ? `${messageBase} Preview:\n${previewLines.map((l) => `- ${l}`).join('\n')}`
+        ? `${messageBase} Preview:\n${previewLines
+            .map((l) => `- ${l}`)
+            .join("\n")}`
         : messageBase;
-    const parts: Array<{ type: 'text'; text: string }> = [
-      { type: 'text', text: fullMessage },
+    const parts: Array<{ type: "text"; text: string }> = [
+      { type: "text", text: fullMessage },
     ];
     if (config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
-      parts.push({ type: 'text', text: JSON.stringify(structuredBatch) });
+      parts.push({ type: "text", text: JSON.stringify(structuredBatch) });
     }
     return { content: parts, structuredContent: structuredBatch };
   },
@@ -394,23 +406,26 @@ export const listMyIssuesTool = {
     if (!parsed.success) {
       return {
         isError: true,
-        content: [{ type: 'text', text: parsed.error.message }],
+        content: [{ type: "text", text: parsed.error.message }],
       };
     }
     const client = getLinearClient();
     const me = await client.viewer;
     const first = parsed.data.limit ?? 20;
-    const after = parsed.data.cursor;
+    const after =
+      parsed.data.cursor && parsed.data.cursor.trim() !== ""
+        ? parsed.data.cursor
+        : undefined;
     const orderBy =
-      parsed.data.orderBy === 'updatedAt'
+      parsed.data.orderBy === "updatedAt"
         ? LinearDocument.PaginationOrderBy.UpdatedAt
-        : parsed.data.orderBy === 'createdAt'
-          ? LinearDocument.PaginationOrderBy.CreatedAt
-          : undefined;
+        : parsed.data.orderBy === "createdAt"
+        ? LinearDocument.PaginationOrderBy.CreatedAt
+        : undefined;
     // Build keyword-aware filter for assigned issues
     const keywordTokens = [
       ...(parsed.data.keywords ?? []),
-      ...(parsed.data.q ?? '')
+      ...(parsed.data.q ?? "")
         .split(/\s+/)
         .map((s) => s.trim())
         .filter(Boolean),
@@ -420,7 +435,7 @@ export const listMyIssuesTool = {
       : undefined;
     const baseFilter =
       normalizeIssueFilter(
-        (parsed.data.filter as Record<string, unknown> | undefined) ?? undefined,
+        (parsed.data.filter as Record<string, unknown> | undefined) ?? undefined
       ) ?? {};
     const mergedFilter = keywordOr
       ? { ...(baseFilter as object), ...(keywordOr as object) }
@@ -439,18 +454,21 @@ export const listMyIssuesTool = {
         let projectName: string | undefined;
         let assigneeName: string | undefined;
         try {
-          const s = await (i as unknown as { state?: Promise<{ name?: string }> })
-            .state;
+          const s = await (
+            i as unknown as { state?: Promise<{ name?: string }> }
+          ).state;
           stateName = s?.name ?? undefined;
         } catch {}
         try {
-          const p = await (i as unknown as { project?: Promise<{ name?: string }> })
-            .project;
+          const p = await (
+            i as unknown as { project?: Promise<{ name?: string }> }
+          ).project;
           projectName = p?.name ?? undefined;
         } catch {}
         try {
-          const a = await (i as unknown as { assignee?: Promise<{ name?: string }> })
-            .assignee;
+          const a = await (
+            i as unknown as { assignee?: Promise<{ name?: string }> }
+          ).assignee;
           assigneeName = a?.name ?? undefined;
         } catch {}
         const labels = (await i.labels()).nodes.map((l) => ({
@@ -465,20 +483,20 @@ export const listMyIssuesTool = {
           description: i.description ?? undefined,
           priority: i.priority ?? undefined,
           estimate: i.estimate ?? undefined,
-          stateId: i.stateId ?? '',
+          stateId: i.stateId ?? "",
           stateName,
           projectId: i.projectId ?? undefined,
           projectName,
           assigneeId: i.assigneeId ?? undefined,
           assigneeName,
-          createdAt: i.createdAt?.toString() ?? '',
-          updatedAt: i.updatedAt?.toString() ?? '',
+          createdAt: i.createdAt?.toString() ?? "",
+          updatedAt: i.updatedAt?.toString() ?? "",
           archivedAt: i.archivedAt?.toString() ?? undefined,
           dueDate: (i as unknown as { dueDate?: string })?.dueDate ?? undefined,
           url: (i as unknown as { url?: string })?.url ?? undefined,
           labels,
         };
-      }),
+      })
     );
     const structured = ListIssuesOutputSchema.parse({
       items,
@@ -490,7 +508,7 @@ export const listMyIssuesTool = {
       items as unknown as Record<string, unknown>[],
       (i) => {
         const idf = (i.identifier as string | undefined) ?? (i.id as string);
-        const ttl = String((i.title as string) ?? '');
+        const ttl = String((i.title as string) ?? "");
         const st = (i.stateName as string | undefined) ?? (i.stateId as string);
         const proj = (i.projectName as string | undefined) ?? undefined;
         const asg =
@@ -502,7 +520,7 @@ export const listMyIssuesTool = {
           ? (i.labels as Array<{ id: string; name: string }>)
               .map((l) => l.name)
               .slice(0, 5)
-              .join(', ')
+              .join(", ")
           : undefined;
         const title = url ? `[${idf} — ${ttl}](${url})` : `${idf} '${ttl}'`;
         const parts: string[] = [`state ${st}`];
@@ -518,21 +536,21 @@ export const listMyIssuesTool = {
         if (asg) {
           parts.push(`assignee ${asg}`);
         }
-        return `${title} — ${parts.join('; ')}`.trim();
-      },
+        return `${title} — ${parts.join("; ")}`.trim();
+      }
     );
     const nextSteps2: string[] = [];
     if (items.length > 0) {
       nextSteps2.push(
-        'Use list_issues (by id or by number+team.key/team.id, limit=1) for details, or update_issues to change state/assignee. Prefer list_issues with q/keywords for workspace search.',
+        "Use list_issues (by id or by number+team.key/team.id, limit=1) for details, or update_issues to change state/assignee. Prefer list_issues with q/keywords for workspace search."
       );
     } else {
       nextSteps2.push(
-        "Refine filters: try state.type 'started' (alias: active), clear q/keywords or try different keywords.",
+        "Refine filters: try state.type 'started' (alias: active), clear q/keywords or try different keywords."
       );
     }
     const message = summarizeList({
-      subject: 'My issues',
+      subject: "My issues",
       count: items.length,
       limit: first,
       nextCursor: structured.nextCursor,
@@ -544,26 +562,28 @@ export const listMyIssuesTool = {
       .map((i) => {
         const idf = (i.identifier ?? i.id) as string;
         const state = (i.stateName ?? i.stateId) as string;
-        const labels = i.labels.map((l) => l.name).join(', ');
+        const labels = i.labels.map((l) => l.name).join(", ");
         const proj = i.projectName
-          ? `\n  project: ${i.projectName} (${i.projectId ?? ''})`
-          : '';
+          ? `\n  project: ${i.projectName} (${i.projectId ?? ""})`
+          : "";
         const asg = i.assigneeName
-          ? `\n  assignee: ${i.assigneeName} (${i.assigneeId ?? ''})`
-          : '';
-        const due = i.dueDate ? `\n  due: ${i.dueDate}` : '';
+          ? `\n  assignee: ${i.assigneeName} (${i.assigneeId ?? ""})`
+          : "";
+        const due = i.dueDate ? `\n  due: ${i.dueDate}` : "";
         const url = (i.url as string | undefined) ?? undefined;
-        const lab = labels ? `\n  labels: ${labels}` : '';
+        const lab = labels ? `\n  labels: ${labels}` : "";
         const header = url
           ? `- [${idf} — ${i.title}](${url})`
           : `- ${idf} — ${i.title}`;
         return `${header}\n  state: ${state} (${i.stateId})${proj}${asg}${due}${lab}`;
       })
-      .join('\n');
+      .join("\n");
     const full = details ? `${message}\n\n${details}` : message;
-    const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: full }];
+    const parts: Array<{ type: "text"; text: string }> = [
+      { type: "text", text: full },
+    ];
     if (config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
-      parts.push({ type: 'text', text: JSON.stringify(structured) });
+      parts.push({ type: "text", text: JSON.stringify(structured) });
     }
     return { content: parts, structuredContent: structured };
   },
@@ -579,7 +599,7 @@ export const createIssuesTool = {
     if (!parsed.success) {
       return {
         isError: true,
-        content: [{ type: 'text', text: parsed.error.message }],
+        content: [{ type: "text", text: parsed.error.message }],
       };
     }
     const client = getLinearClient();
@@ -602,16 +622,19 @@ export const createIssuesTool = {
           teamId: it.teamId,
           title: it.title,
         };
-        if (typeof it.description === 'string' && it.description.trim() !== '') {
+        if (
+          typeof it.description === "string" &&
+          it.description.trim() !== ""
+        ) {
           payloadInput.description = it.description;
         }
-        if (typeof it.stateId === 'string' && it.stateId) {
+        if (typeof it.stateId === "string" && it.stateId) {
           payloadInput.stateId = it.stateId;
         }
         if (Array.isArray(it.labelIds) && it.labelIds.length > 0) {
           payloadInput.labelIds = it.labelIds;
         }
-        if (typeof it.assigneeId === 'string' && it.assigneeId) {
+        if (typeof it.assigneeId === "string" && it.assigneeId) {
           payloadInput.assigneeId = it.assigneeId;
         } else {
           try {
@@ -622,23 +645,24 @@ export const createIssuesTool = {
             }
           } catch {}
         }
-        if (typeof it.projectId === 'string' && it.projectId) {
+        if (typeof it.projectId === "string" && it.projectId) {
           payloadInput.projectId = it.projectId;
         }
-        if (typeof it.priority !== 'undefined') {
-          const n = typeof it.priority === 'string' ? Number(it.priority) : it.priority;
+        if (typeof it.priority !== "undefined") {
+          const n =
+            typeof it.priority === "string" ? Number(it.priority) : it.priority;
           if (Number.isFinite(n) && (n as number) >= 0) {
             payloadInput.priority = n;
           }
         }
-        if (typeof it.estimate === 'number') {
+        if (typeof it.estimate === "number") {
           if (it.estimate > 0) {
             payloadInput.estimate = it.estimate;
           } else if (it.estimate === 0) {
             let allowZero =
-              (it as unknown as { allowZeroEstimate?: boolean }).allowZeroEstimate ===
-              true;
-            if (!allowZero && typeof it.teamId === 'string' && it.teamId) {
+              (it as unknown as { allowZeroEstimate?: boolean })
+                .allowZeroEstimate === true;
+            if (!allowZero && typeof it.teamId === "string" && it.teamId) {
               if (teamAllowZeroCache.has(it.teamId)) {
                 allowZero = teamAllowZeroCache.get(it.teamId) === true;
               } else {
@@ -658,15 +682,15 @@ export const createIssuesTool = {
             }
           }
         }
-        if (typeof it.dueDate === 'string' && it.dueDate.trim() !== '') {
+        if (typeof it.dueDate === "string" && it.dueDate.trim() !== "") {
           payloadInput.dueDate = it.dueDate;
         }
-        if (typeof it.parentId === 'string' && it.parentId) {
+        if (typeof it.parentId === "string" && it.parentId) {
           payloadInput.parentId = it.parentId;
         }
 
         if (abort?.aborted) {
-          throw new Error('Operation aborted');
+          throw new Error("Operation aborted");
         }
         const call = () =>
           client.createIssue(
@@ -682,18 +706,20 @@ export const createIssuesTool = {
               estimate?: number;
               dueDate?: string;
               parentId?: string;
-            },
+            }
           );
-        const payload = parsed.data.parallel === true ? await call() : await gate(call);
+        const payload =
+          parsed.data.parallel === true ? await call() : await gate(call);
         results.push({
           index: i,
           ok: payload.success ?? true,
           id: (payload.issue as unknown as { id?: string })?.id,
-          identifier: (payload.issue as unknown as { identifier?: string })?.identifier,
+          identifier: (payload.issue as unknown as { identifier?: string })
+            ?.identifier,
         });
       } catch (error) {
-        await logger.error('create_issues', {
-          message: 'Failed to create issue',
+        await logger.error("create_issues", {
+          message: "Failed to create issue",
           index: i,
           error: (error as Error).message,
         });
@@ -701,7 +727,7 @@ export const createIssuesTool = {
           index: i,
           ok: false,
           error: (error as Error).message,
-          code: 'LINEAR_CREATE_ERROR',
+          code: "LINEAR_CREATE_ERROR",
         });
       }
     }
@@ -712,51 +738,59 @@ export const createIssuesTool = {
     const structured = CreateIssuesOutputSchema.parse({ results, summary });
     const okIds = results
       .filter((r) => r.ok)
-      .map((r) => r.identifier ?? r.id ?? `item[${String(r.index)}]`) as string[];
+      .map(
+        (r) => r.identifier ?? r.id ?? `item[${String(r.index)}]`
+      ) as string[];
     const failures = results
       .filter((r) => !r.ok)
-      .map((r) => ({ index: r.index, error: r.error ?? '', code: undefined }));
+      .map((r) => ({ index: r.index, error: r.error ?? "", code: undefined }));
     // Compose a richer message with links for created items
     const failureHints: string[] = [];
     if (summary.failed > 0) {
       // Provide actionable hints for common causes like invalid assigneeId
       failureHints.push(
-        "If 'assigneeId' was invalid, fetch viewer id via 'workspace_metadata' (include: ['profile']) and use it to assign to yourself.",
+        "If 'assigneeId' was invalid, fetch viewer id via 'workspace_metadata' (include: ['profile']) and use it to assign to yourself."
       );
       failureHints.push(
-        "Alternatively use 'list_users' to find the correct user id, or omit 'assigneeId' and assign later with 'update_issues'.",
+        "Alternatively use 'list_users' to find the correct user id, or omit 'assigneeId' and assign later with 'update_issues'."
       );
     }
     const summaryText = summarizeBatch({
-      action: 'Created issues',
+      action: "Created issues",
       ok: summary.ok,
       total: items.length,
       okIdentifiers: okIds,
       failures,
       nextSteps: [
-        'Use list_issues (filter by id or by number+team.key/team.id, limit=1) to verify details, or update_issues to modify.',
+        "Use list_issues (filter by id or by number+team.key/team.id, limit=1) to verify details, or update_issues to modify.",
         ...failureHints,
       ],
     });
     const detailLines: string[] = [];
     for (const r of results.filter((r) => r.ok)) {
       try {
-        const issue = await getLinearClient().issue(r.id ?? (r.identifier as string));
+        const issue = await getLinearClient().issue(
+          r.id ?? (r.identifier as string)
+        );
         const idf =
           (issue as unknown as { identifier?: string })?.identifier ?? issue.id;
-        const url = (issue as unknown as { url?: string })?.url as string | undefined;
+        const url = (issue as unknown as { url?: string })?.url as
+          | string
+          | undefined;
         const title = issue.title;
         let stateName: string | undefined;
         let projectName: string | undefined;
         let assigneeName: string | undefined;
         try {
-          const s = await (issue as unknown as { state?: Promise<{ name?: string }> })
-            .state;
+          const s = await (
+            issue as unknown as { state?: Promise<{ name?: string }> }
+          ).state;
           stateName = s?.name ?? undefined;
         } catch {}
         try {
-          const p = await (issue as unknown as { project?: Promise<{ name?: string }> })
-            .project;
+          const p = await (
+            issue as unknown as { project?: Promise<{ name?: string }> }
+          ).project;
           projectName = p?.name ?? undefined;
         } catch {}
         try {
@@ -765,16 +799,18 @@ export const createIssuesTool = {
           ).assignee;
           assigneeName = a?.name ?? undefined;
         } catch {}
-        let labelsList = '';
+        let labelsList = "";
         try {
           labelsList = (await issue.labels()).nodes
             .map((l) => l.name)
             .slice(0, 5)
-            .join(', ');
+            .join(", ");
         } catch {}
         const dueDate = (issue as unknown as { dueDate?: string })?.dueDate;
         const priority = (issue as unknown as { priority?: number })?.priority;
-        const header = url ? `[${idf} — ${title}](${url})` : `${idf} — ${title}`;
+        const header = url
+          ? `[${idf} — ${title}](${url})`
+          : `${idf} — ${title}`;
         const partsLine: string[] = [];
         if (stateName) {
           partsLine.push(`state ${stateName}`);
@@ -785,7 +821,7 @@ export const createIssuesTool = {
         if (labelsList) {
           partsLine.push(`labels ${labelsList}`);
         }
-        if (typeof priority === 'number') {
+        if (typeof priority === "number") {
           partsLine.push(`priority ${priority}`);
         }
         if (dueDate) {
@@ -795,17 +831,19 @@ export const createIssuesTool = {
           partsLine.push(`assignee ${assigneeName}`);
         }
         const line =
-          partsLine.length > 0 ? `${header} — ${partsLine.join('; ')}` : header;
+          partsLine.length > 0 ? `${header} — ${partsLine.join("; ")}` : header;
         detailLines.push(`- ${line}`);
       } catch {}
     }
     const text =
       detailLines.length > 0
-        ? `${summaryText}\n\n${detailLines.join('\n')}`
+        ? `${summaryText}\n\n${detailLines.join("\n")}`
         : summaryText;
-    const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text }];
+    const parts: Array<{ type: "text"; text: string }> = [
+      { type: "text", text },
+    ];
     if (config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
-      parts.push({ type: 'text', text: JSON.stringify(structured) });
+      parts.push({ type: "text", text: JSON.stringify(structured) });
     }
     return { content: parts, structuredContent: structured };
   },
@@ -821,7 +859,7 @@ export const updateIssuesTool = {
     if (!parsed.success) {
       return {
         isError: true,
-        content: [{ type: 'text', text: parsed.error.message }],
+        content: [{ type: "text", text: parsed.error.message }],
       };
     }
     const client = getLinearClient();
@@ -842,7 +880,7 @@ export const updateIssuesTool = {
       try {
         // Snapshot BEFORE
         const beforeIssue = await gate(() => client.issue(it.id)).catch(
-          () => undefined,
+          () => undefined
         );
         const beforeSnapshot = await (async () => {
           if (!beforeIssue) {
@@ -868,13 +906,13 @@ export const updateIssuesTool = {
               .labels()
               .then((r) => r.nodes.map((l) => ({ id: l.id, name: l.name })))
               .catch(() => [] as Array<{ id: string; name: string }>);
-            const idf = (beforeIssue as unknown as { identifier?: string })?.identifier;
+            const idf = (beforeIssue as unknown as { identifier?: string })
+              ?.identifier;
             const url = (beforeIssue as unknown as { url?: string })?.url as
               | string
               | undefined;
-            const dueDate = (beforeIssue as unknown as { dueDate?: string })?.dueDate as
-              | string
-              | undefined;
+            const dueDate = (beforeIssue as unknown as { dueDate?: string })
+              ?.dueDate as string | undefined;
             const priority = (beforeIssue as unknown as { priority?: number })
               ?.priority as number | undefined;
             const estimate = (beforeIssue as unknown as { estimate?: number })
@@ -887,9 +925,11 @@ export const updateIssuesTool = {
               identifier: idf as string | undefined,
               title: beforeIssue.title as string,
               url,
-              stateId: (beforeIssue as unknown as { stateId?: string })?.stateId ?? '',
+              stateId:
+                (beforeIssue as unknown as { stateId?: string })?.stateId ?? "",
               stateName: s?.name ?? undefined,
-              projectId: (beforeIssue as unknown as { projectId?: string })?.projectId,
+              projectId: (beforeIssue as unknown as { projectId?: string })
+                ?.projectId,
               projectName: p?.name ?? undefined,
               assigneeId: (beforeIssue as unknown as { assigneeId?: string })
                 ?.assigneeId,
@@ -906,42 +946,47 @@ export const updateIssuesTool = {
         })();
 
         const payloadInput: Record<string, unknown> = {};
-        if (typeof it.title === 'string' && it.title.trim() !== '') {
+        if (typeof it.title === "string" && it.title.trim() !== "") {
           payloadInput.title = it.title;
         }
-        if (typeof it.description === 'string' && it.description.trim() !== '') {
+        if (
+          typeof it.description === "string" &&
+          it.description.trim() !== ""
+        ) {
           payloadInput.description = it.description;
         }
-        if (typeof it.stateId === 'string' && it.stateId) {
+        if (typeof it.stateId === "string" && it.stateId) {
           payloadInput.stateId = it.stateId;
         }
         if (Array.isArray(it.labelIds) && it.labelIds.length > 0) {
           payloadInput.labelIds = it.labelIds;
         }
-        if (typeof it.assigneeId === 'string' && it.assigneeId) {
+        if (typeof it.assigneeId === "string" && it.assigneeId) {
           payloadInput.assigneeId = it.assigneeId;
         }
-        if (typeof it.projectId === 'string' && it.projectId) {
+        if (typeof it.projectId === "string" && it.projectId) {
           payloadInput.projectId = it.projectId;
         }
-        if (typeof it.priority !== 'undefined') {
-          const n = typeof it.priority === 'string' ? Number(it.priority) : it.priority;
+        if (typeof it.priority !== "undefined") {
+          const n =
+            typeof it.priority === "string" ? Number(it.priority) : it.priority;
           if (Number.isFinite(n) && (n as number) >= 0) {
             payloadInput.priority = n;
           }
         }
-        if (typeof it.estimate === 'number') {
+        if (typeof it.estimate === "number") {
           if (it.estimate > 0) {
             payloadInput.estimate = it.estimate;
           } else if (it.estimate === 0) {
             let allowZero =
-              (it as unknown as { allowZeroEstimate?: boolean }).allowZeroEstimate ===
-              true;
+              (it as unknown as { allowZeroEstimate?: boolean })
+                .allowZeroEstimate === true;
             if (!allowZero) {
               // Try to infer the team from the issue itself
               try {
                 const issue = await client.issue(it.id);
-                const teamId = (issue as unknown as { teamId?: string })?.teamId;
+                const teamId = (issue as unknown as { teamId?: string })
+                  ?.teamId;
                 if (teamId) {
                   if (teamAllowZeroCache.has(teamId)) {
                     allowZero = teamAllowZeroCache.get(teamId) === true;
@@ -965,15 +1010,15 @@ export const updateIssuesTool = {
             }
           }
         }
-        if (typeof it.dueDate === 'string' && it.dueDate.trim() !== '') {
+        if (typeof it.dueDate === "string" && it.dueDate.trim() !== "") {
           payloadInput.dueDate = it.dueDate;
         }
-        if (typeof it.parentId === 'string' && it.parentId) {
+        if (typeof it.parentId === "string" && it.parentId) {
           payloadInput.parentId = it.parentId;
         }
 
         if (abort?.aborted) {
-          throw new Error('Operation aborted');
+          throw new Error("Operation aborted");
         }
         const payload =
           parsed.data.parallel === true
@@ -981,34 +1026,44 @@ export const updateIssuesTool = {
             : await gate(() => client.updateIssue(it.id, payloadInput));
         if (it.addLabelIds?.length || it.removeLabelIds?.length) {
           const issue = await gate(() => client.issue(it.id));
-          const current = new Set((await issue.labels()).nodes.map((l) => l.id));
+          const current = new Set(
+            (await issue.labels()).nodes.map((l) => l.id)
+          );
           it.addLabelIds?.forEach((id) => current.add(id));
           it.removeLabelIds?.forEach((id) => current.delete(id));
           await (parsed.data.parallel === true
             ? client.updateIssue(it.id, { labelIds: Array.from(current) })
-            : gate(() => client.updateIssue(it.id, { labelIds: Array.from(current) })));
+            : gate(() =>
+                client.updateIssue(it.id, { labelIds: Array.from(current) })
+              ));
         }
         // Handle archive/unarchive using SDK helpers
-        if (typeof (it as { archived?: boolean }).archived === 'boolean') {
+        if (typeof (it as { archived?: boolean }).archived === "boolean") {
           try {
-            const targetArchived = (it as { archived?: boolean }).archived === true;
+            const targetArchived =
+              (it as { archived?: boolean }).archived === true;
             if (targetArchived) {
               const anyClient = client as unknown as {
                 archiveIssue?: (id: string) => Promise<unknown>;
               };
-              if (typeof anyClient.archiveIssue === 'function') {
+              if (typeof anyClient.archiveIssue === "function") {
                 await (parsed.data.parallel === true
                   ? anyClient.archiveIssue?.(it.id)
-                  : gate(() => anyClient.archiveIssue?.(it.id) as Promise<unknown>));
+                  : gate(
+                      () => anyClient.archiveIssue?.(it.id) as Promise<unknown>
+                    ));
               }
             } else {
               const anyClient = client as unknown as {
                 unarchiveIssue?: (id: string) => Promise<unknown>;
               };
-              if (typeof anyClient.unarchiveIssue === 'function') {
+              if (typeof anyClient.unarchiveIssue === "function") {
                 await (parsed.data.parallel === true
                   ? anyClient.unarchiveIssue?.(it.id)
-                  : gate(() => anyClient.unarchiveIssue?.(it.id) as Promise<unknown>));
+                  : gate(
+                      () =>
+                        anyClient.unarchiveIssue?.(it.id) as Promise<unknown>
+                    ));
               }
             }
           } catch {
@@ -1018,7 +1073,9 @@ export const updateIssuesTool = {
         results.push({ index: i, ok: payload.success ?? true, id: it.id });
 
         // Snapshot AFTER
-        const afterIssue = await gate(() => client.issue(it.id)).catch(() => undefined);
+        const afterIssue = await gate(() => client.issue(it.id)).catch(
+          () => undefined
+        );
         const afterSnapshot = await (async () => {
           if (!afterIssue) {
             return undefined;
@@ -1043,13 +1100,13 @@ export const updateIssuesTool = {
               .labels()
               .then((r) => r.nodes.map((l) => ({ id: l.id, name: l.name })))
               .catch(() => [] as Array<{ id: string; name: string }>);
-            const idf = (afterIssue as unknown as { identifier?: string })?.identifier;
+            const idf = (afterIssue as unknown as { identifier?: string })
+              ?.identifier;
             const url = (afterIssue as unknown as { url?: string })?.url as
               | string
               | undefined;
-            const dueDate = (afterIssue as unknown as { dueDate?: string })?.dueDate as
-              | string
-              | undefined;
+            const dueDate = (afterIssue as unknown as { dueDate?: string })
+              ?.dueDate as string | undefined;
             const priority = (afterIssue as unknown as { priority?: number })
               ?.priority as number | undefined;
             const estimate = (afterIssue as unknown as { estimate?: number })
@@ -1062,9 +1119,11 @@ export const updateIssuesTool = {
               identifier: idf as string | undefined,
               title: afterIssue.title as string,
               url,
-              stateId: (afterIssue as unknown as { stateId?: string })?.stateId ?? '',
+              stateId:
+                (afterIssue as unknown as { stateId?: string })?.stateId ?? "",
               stateName: s?.name ?? undefined,
-              projectId: (afterIssue as unknown as { projectId?: string })?.projectId,
+              projectId: (afterIssue as unknown as { projectId?: string })
+                ?.projectId,
               projectName: p?.name ?? undefined,
               assigneeId: (afterIssue as unknown as { assigneeId?: string })
                 ?.assigneeId,
@@ -1097,50 +1156,58 @@ export const updateIssuesTool = {
           const b = beforeSnapshot;
           const a = afterSnapshot;
           // Only report diffs for fields that were requested
-          if (Object.hasOwn(it, 'title')) {
+          if (Object.hasOwn(it, "title")) {
             if (b?.title !== a.title) {
-              changes.push(`Title: ${b?.title ?? '—'} → ${a.title ?? '—'}`);
+              changes.push(`Title: ${b?.title ?? "—"} → ${a.title ?? "—"}`);
             }
           }
-          if (Object.hasOwn(it, 'stateId')) {
-            if ((b?.stateName ?? '') !== (a.stateName ?? '')) {
-              changes.push(`State: ${b?.stateName ?? '—'} → ${a.stateName ?? '—'}`);
-            }
-          }
-          if (Object.hasOwn(it, 'assigneeId')) {
-            if ((b?.assigneeName ?? '') !== (a.assigneeName ?? '')) {
+          if (Object.hasOwn(it, "stateId")) {
+            if ((b?.stateName ?? "") !== (a.stateName ?? "")) {
               changes.push(
-                `Assignee: ${b?.assigneeName ?? '—'} → ${a.assigneeName ?? '—'}`,
+                `State: ${b?.stateName ?? "—"} → ${a.stateName ?? "—"}`
               );
             }
           }
-          if (Object.hasOwn(it, 'projectId')) {
-            if ((b?.projectName ?? '') !== (a.projectName ?? '')) {
+          if (Object.hasOwn(it, "assigneeId")) {
+            if ((b?.assigneeName ?? "") !== (a.assigneeName ?? "")) {
               changes.push(
-                `Project: ${b?.projectName ?? '—'} → ${a.projectName ?? '—'}`,
+                `Assignee: ${b?.assigneeName ?? "—"} → ${a.assigneeName ?? "—"}`
               );
             }
           }
-          if (Object.hasOwn(it, 'priority')) {
-            if ((b?.priority ?? '—') !== (a.priority ?? '—')) {
-              changes.push(`Priority: ${b?.priority ?? '—'} → ${a.priority ?? '—'}`);
+          if (Object.hasOwn(it, "projectId")) {
+            if ((b?.projectName ?? "") !== (a.projectName ?? "")) {
+              changes.push(
+                `Project: ${b?.projectName ?? "—"} → ${a.projectName ?? "—"}`
+              );
             }
           }
-          if (Object.hasOwn(it, 'estimate')) {
-            if ((b?.estimate ?? '—') !== (a.estimate ?? '—')) {
-              changes.push(`Estimate: ${b?.estimate ?? '—'} → ${a.estimate ?? '—'}`);
+          if (Object.hasOwn(it, "priority")) {
+            if ((b?.priority ?? "—") !== (a.priority ?? "—")) {
+              changes.push(
+                `Priority: ${b?.priority ?? "—"} → ${a.priority ?? "—"}`
+              );
             }
           }
-          if (Object.hasOwn(it, 'dueDate')) {
-            if ((b?.dueDate ?? '—') !== (a.dueDate ?? '—')) {
-              changes.push(`Due date: ${b?.dueDate ?? '—'} → ${a.dueDate ?? '—'}`);
+          if (Object.hasOwn(it, "estimate")) {
+            if ((b?.estimate ?? "—") !== (a.estimate ?? "—")) {
+              changes.push(
+                `Estimate: ${b?.estimate ?? "—"} → ${a.estimate ?? "—"}`
+              );
+            }
+          }
+          if (Object.hasOwn(it, "dueDate")) {
+            if ((b?.dueDate ?? "—") !== (a.dueDate ?? "—")) {
+              changes.push(
+                `Due date: ${b?.dueDate ?? "—"} → ${a.dueDate ?? "—"}`
+              );
             }
           }
           // Labels diff if labelIds/add/remove were provided
           if (
-            Object.hasOwn(it, 'labelIds') ||
-            Object.hasOwn(it, 'addLabelIds') ||
-            Object.hasOwn(it, 'removeLabelIds')
+            Object.hasOwn(it, "labelIds") ||
+            Object.hasOwn(it, "addLabelIds") ||
+            Object.hasOwn(it, "removeLabelIds")
           ) {
             const beforeNames = new Set((b?.labels ?? []).map((l) => l.name));
             const afterNames = new Set((a.labels ?? []).map((l) => l.name));
@@ -1158,34 +1225,36 @@ export const updateIssuesTool = {
             }
             const parts: string[] = [];
             if (added.length) {
-              parts.push(`+${added.join(', ')}`);
+              parts.push(`+${added.join(", ")}`);
             }
             if (removed.length) {
-              parts.push(`−${removed.join(', ')}`);
+              parts.push(`−${removed.join(", ")}`);
             }
             if (parts.length) {
-              changes.push(`Labels: ${parts.join('; ')}`);
+              changes.push(`Labels: ${parts.join("; ")}`);
             }
           }
           // Archive status diff if requested
-          if (Object.hasOwn(it, 'archived')) {
+          if (Object.hasOwn(it, "archived")) {
             const beforeArchived = Boolean(b?.archivedAt);
             const afterArchived = Boolean(a.archivedAt);
             if (beforeArchived !== afterArchived) {
               changes.push(
-                `Archived: ${beforeArchived ? 'Yes' : 'No'} → ${
-                  afterArchived ? 'Yes' : 'No'
-                }`,
+                `Archived: ${beforeArchived ? "Yes" : "No"} → ${
+                  afterArchived ? "Yes" : "No"
+                }`
               );
             }
           }
           const line =
-            changes.length > 0 ? `${header}\n  ${changes.join('\n  ')}` : header;
+            changes.length > 0
+              ? `${header}\n  ${changes.join("\n  ")}`
+              : header;
           diffLines.push(line);
         }
       } catch (error) {
-        await logger.error('update_issues', {
-          message: 'Failed to update issue',
+        await logger.error("update_issues", {
+          message: "Failed to update issue",
           id: it.id,
           error: (error as Error).message,
         });
@@ -1194,7 +1263,7 @@ export const updateIssuesTool = {
           ok: false,
           id: it.id,
           error: (error as Error).message,
-          code: 'LINEAR_UPDATE_ERROR',
+          code: "LINEAR_UPDATE_ERROR",
         });
       }
     }
@@ -1211,28 +1280,31 @@ export const updateIssuesTool = {
       .map((r) => ({
         index: r.index,
         id: r.id,
-        error: r.error ?? '',
+        error: r.error ?? "",
         code: undefined,
       }));
     const archivedRequested = items.some(
-      (x) => typeof (x as { archived?: boolean }).archived === 'boolean',
+      (x) => typeof (x as { archived?: boolean }).archived === "boolean"
     );
     const base = summarizeBatch({
-      action: 'Updated issues',
+      action: "Updated issues",
       ok: summary.ok,
       total: items.length,
       okIdentifiers: okIds,
       failures,
       nextSteps: [
         archivedRequested
-          ? 'Use list_issues (filter by id or by number+team.key/team.id, includeArchived: true, limit=1) for verification and to confirm filters/states.'
-          : 'Use list_issues (filter by id or by number+team.key/team.id, limit=1) for verification and to confirm filters/states.',
+          ? "Use list_issues (filter by id or by number+team.key/team.id, includeArchived: true, limit=1) for verification and to confirm filters/states."
+          : "Use list_issues (filter by id or by number+team.key/team.id, limit=1) for verification and to confirm filters/states.",
       ],
     });
-    const text = diffLines.length > 0 ? `${base}\n\n${diffLines.join('\n')}` : base;
-    const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text }];
+    const text =
+      diffLines.length > 0 ? `${base}\n\n${diffLines.join("\n")}` : base;
+    const parts: Array<{ type: "text"; text: string }> = [
+      { type: "text", text },
+    ];
     if (config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
-      parts.push({ type: 'text', text: JSON.stringify(structured) });
+      parts.push({ type: "text", text: JSON.stringify(structured) });
     }
     return { content: parts, structuredContent: structured };
   },
