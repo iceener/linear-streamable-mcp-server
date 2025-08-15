@@ -1,0 +1,27 @@
+name = "linear-mcp-worker"
+main = "src/worker.ts"
+compatibility_date = "2025-06-18"
+workers_dev = true
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+MCP_PROTOCOL_VERSION = "2025-06-18"
+AUTH_ENABLED = "true"
+AUTH_REQUIRE_RS = "true"
+AUTH_ALLOW_LINEAR_BEARER = "false"
+OAUTH_AUTHORIZATION_URL = "https://linear.app/oauth/authorize"
+OAUTH_TOKEN_URL = "https://api.linear.app/oauth/token"
+OAUTH_SCOPES = "read write"
+
+# NEW: client redirect allowlist and a safe fallback
+OAUTH_REDIRECT_ALLOW_ALL = "false"
+OAUTH_REDIRECT_ALLOWLIST = "alice://oauth/callback,https://claude.ai/api/mcp/auth_callback,https://claude.com/api/mcp/auth_callback"
+OAUTH_REDIRECT_URI = "alice://oauth/callback"
+
+# Keep dev so localhost callback from mcp-remote is accepted automatically
+NODE_ENV = "development"
+
+[[kv_namespaces]]
+binding = "TOKENS"
+id = "YOUR_ID"
+
