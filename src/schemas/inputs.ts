@@ -57,6 +57,12 @@ export const ListIssuesInputSchema = PaginationInput.extend({
     .describe(
       "Explicit keywords; applies OR of title.containsIgnoreCase for each"
     ),
+  fullDescriptions: z
+    .boolean()
+    .optional()
+    .describe(
+      "If true, include full descriptions in the human-readable message block (structuredContent always includes full description)."
+    ),
 }).strict();
 export type ListIssuesInput = z.infer<typeof ListIssuesInputSchema>;
 
@@ -74,6 +80,12 @@ export const ListMyIssuesInputSchema = PaginationInput.extend({
   orderBy: z.enum(["updatedAt", "createdAt", "priority"]).optional(),
   q: z.string().optional(),
   keywords: z.array(z.string()).optional(),
+  fullDescriptions: z
+    .boolean()
+    .optional()
+    .describe(
+      "If true, include full descriptions in the human-readable message block (structuredContent always includes full description)."
+    ),
 }).strict();
 export type ListMyIssuesInput = z.infer<typeof ListMyIssuesInputSchema>;
 

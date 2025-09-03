@@ -235,11 +235,27 @@ export const listIssuesTool = {
           : "";
         const due = i.dueDate ? `\n  due: ${i.dueDate}` : "";
         const lab = labels ? `\n  labels: ${labels}` : "";
+        const desc = (() => {
+          const raw = (i.description as string | undefined) ?? undefined;
+          if (!raw) return "";
+          if (
+            (parsed.data as { fullDescriptions?: boolean }).fullDescriptions ===
+            true
+          ) {
+            return `\n  description: ${raw}`;
+          }
+          const singleLine = raw.replace(/\s+/g, " ").trim();
+          const snippet =
+            singleLine.length > 200
+              ? `${singleLine.slice(0, 200)}…`
+              : singleLine;
+          return snippet ? `\n  description: ${snippet}` : "";
+        })();
         const url = i.url ?? undefined;
         const header = url
           ? `- [${idf} — ${i.title}](${url})`
           : `- ${idf} — ${i.title}`;
-        return `<ove id="${i.id}" identifier="${idf}">\n${header}\n  state: ${state} (${i.stateId})${proj}${asg}${due}${lab}\n</ove>`;
+        return `<ove id="${i.id}" identifier="${idf}">\n${header}\n  state: ${state} (${i.stateId})${proj}${asg}${due}${lab}${desc}\n</ove>`;
       })
       .join("\n");
     const full = details ? `${message}\n\n${details}` : message;
@@ -410,7 +426,6 @@ export const listMyIssuesTool = {
       };
     }
     const client = getLinearClient();
-    const me = await client.viewer;
     const first = parsed.data.limit ?? 20;
     const after =
       parsed.data.cursor && parsed.data.cursor.trim() !== ""
@@ -441,63 +456,110 @@ export const listMyIssuesTool = {
       ? { ...(baseFilter as object), ...(keywordOr as object) }
       : baseFilter;
 
-    const conn = await me.assignedIssues({
+    // Single GraphQL query to avoid N+1 requests
+    const QUERY = `
+      query ListMyIssues(
+        $first: Int!,
+        $after: String,
+        $filter: IssueFilter,
+        $includeArchived: Boolean,
+        $orderBy: PaginationOrderBy
+      ) {
+        viewer {
+          assignedIssues(
+            first: $first,
+            after: $after,
+            filter: $filter,
+            includeArchived: $includeArchived,
+            orderBy: $orderBy
+          ) {
+            nodes {
+              id
+              identifier
+              title
+              description
+              priority
+              estimate
+              state { id name type }
+              project { id name }
+              assignee { id name }
+              createdAt
+              updatedAt
+              archivedAt
+              dueDate
+              url
+              labels { nodes { id name } }
+            }
+            pageInfo { endCursor }
+          }
+        }
+      }
+    `;
+
+    const variables = {
       first,
       after,
       filter: mergedFilter as Record<string, unknown>,
       includeArchived: parsed.data.includeArchived,
       orderBy,
-    });
-    const items = await Promise.all(
-      conn.nodes.map(async (i) => {
-        let stateName: string | undefined;
-        let projectName: string | undefined;
-        let assigneeName: string | undefined;
-        try {
-          const s = await (
-            i as unknown as { state?: Promise<{ name?: string }> }
-          ).state;
-          stateName = s?.name ?? undefined;
-        } catch {}
-        try {
-          const p = await (
-            i as unknown as { project?: Promise<{ name?: string }> }
-          ).project;
-          projectName = p?.name ?? undefined;
-        } catch {}
-        try {
-          const a = await (
-            i as unknown as { assignee?: Promise<{ name?: string }> }
-          ).assignee;
-          assigneeName = a?.name ?? undefined;
-        } catch {}
-        const labels = (await i.labels()).nodes.map((l) => ({
-          id: l.id,
-          name: l.name,
-        }));
-        return {
-          id: i.id,
-          identifier:
-            (i as unknown as { identifier?: string })?.identifier ?? undefined,
-          title: i.title,
-          description: i.description ?? undefined,
-          priority: i.priority ?? undefined,
-          estimate: i.estimate ?? undefined,
-          stateId: i.stateId ?? "",
-          stateName,
-          projectId: i.projectId ?? undefined,
-          projectName,
-          assigneeId: i.assigneeId ?? undefined,
-          assigneeName,
-          createdAt: i.createdAt?.toString() ?? "",
-          updatedAt: i.updatedAt?.toString() ?? "",
-          archivedAt: i.archivedAt?.toString() ?? undefined,
-          dueDate: (i as unknown as { dueDate?: string })?.dueDate ?? undefined,
-          url: (i as unknown as { url?: string })?.url ?? undefined,
-          labels,
+    } as Record<string, unknown>;
+
+    const resp = await client.client.rawRequest(QUERY, variables);
+    const conn = (
+      resp as unknown as {
+        data?: {
+          viewer?: {
+            assignedIssues?: {
+              nodes?: Array<Record<string, unknown>>;
+              pageInfo?: { endCursor?: string };
+            };
+          };
         };
-      })
-    );
+      }
+    ).data?.viewer?.assignedIssues ?? { nodes: [], pageInfo: {} };
+
+    const items = (conn.nodes ?? []).map((i) => {
+      const state =
+        (i.state as { id?: string; name?: string } | undefined) ?? undefined;
+      const project =
+        (i.project as { id?: string; name?: string } | undefined) ?? undefined;
+      const assignee =
+        (i.assignee as { id?: string; name?: string } | undefined) ?? undefined;
+      const labelsConn = i.labels as
+        | { nodes?: Array<{ id: string; name: string }> }
+        | undefined;
+      const labels = (labelsConn?.nodes ?? []).map((l) => ({
+        id: l.id,
+        name: l.name,
+      }));
+      const archivedAtRaw =
+        (i.archivedAt as string | null | undefined) ?? undefined;
+      return {
+        id: String(i.id ?? ""),
+        identifier: (i as { identifier?: string }).identifier ?? undefined,
+        title: String(i.title ?? ""),
+        description:
+          (i as { description?: string | null }).description ?? undefined,
+        priority: (i as { priority?: number | null }).priority ?? undefined,
+        estimate: (i as { estimate?: number | null }).estimate ?? undefined,
+        stateId: state?.id ?? "",
+        stateName: state?.name ?? undefined,
+        projectId: project?.id ?? undefined,
+        projectName: project?.name ?? undefined,
+        assigneeId: assignee?.id ?? undefined,
+        assigneeName: assignee?.name ?? undefined,
+        createdAt: String(
+          (i as { createdAt?: string | Date | null }).createdAt ?? ""
+        ),
+        updatedAt: String(
+          (i as { updatedAt?: string | Date | null }).updatedAt ?? ""
+        ),
+        archivedAt: archivedAtRaw ? String(archivedAtRaw) : undefined,
+        dueDate: (i as { dueDate?: string }).dueDate ?? undefined,
+        url: (i as { url?: string }).url ?? undefined,
+        labels,
+      };
+    });
     const structured = ListIssuesOutputSchema.parse({
       items,
       cursor: parsed.data.cursor,
@@ -572,10 +634,26 @@ export const listMyIssuesTool = {
         const due = i.dueDate ? `\n  due: ${i.dueDate}` : "";
         const url = (i.url as string | undefined) ?? undefined;
         const lab = labels ? `\n  labels: ${labels}` : "";
+        const desc = (() => {
+          const raw = (i.description as string | undefined) ?? undefined;
+          if (!raw) return "";
+          if (
+            (parsed.data as { fullDescriptions?: boolean }).fullDescriptions ===
+            true
+          ) {
+            return `\n  description: ${raw}`;
+          }
+          const singleLine = raw.replace(/\s+/g, " ").trim();
+          const snippet =
+            singleLine.length > 200
+              ? `${singleLine.slice(0, 200)}…`
+              : singleLine;
+          return snippet ? `\n  description: ${snippet}` : "";
+        })();
         const header = url
           ? `- [${idf} — ${i.title}](${url})`
           : `- ${idf} — ${i.title}`;
-        return `${header}\n  state: ${state} (${i.stateId})${proj}${asg}${due}${lab}`;
+        return `${header}\n  state: ${state} (${i.stateId})${proj}${asg}${due}${lab}${desc}`;
       })
       .join("\n");
     const full = details ? `${message}\n\n${details}` : message;
