@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from 'zod';
 
 // Account/bootstrap
 export const AccountInputSchema = z
@@ -6,13 +6,13 @@ export const AccountInputSchema = z
     include: z
       .array(
         z.enum([
-          "profile",
-          "teams",
-          "workflow_states",
-          "labels",
-          "projects",
-          "favorites",
-        ])
+          'profile',
+          'teams',
+          'workflow_states',
+          'labels',
+          'projects',
+          'favorites',
+        ]),
       )
       .optional(),
     teamIds: z.array(z.string()).optional(),
@@ -35,13 +35,13 @@ export const ListIssuesInputSchema = PaginationInput.extend({
     .record(z.any())
     .optional()
     .describe(
-      "GraphQL-style IssueFilter. If you don't provide a date window, the CLIENT should default to the current week in the viewer's timezone (Mon 00:00 → Sun 23:59:59.999) using updatedAt. Compute the ISO range client-side using viewer.timezone from 'workspace_metadata'."
+      "GraphQL-style IssueFilter. If you don't provide a date window, the CLIENT should default to the current week in the viewer's timezone (Mon 00:00 → Sun 23:59:59.999) using updatedAt. Compute the ISO range client-side using viewer.timezone from 'workspace_metadata'.",
     ),
   teamId: z.string().optional(),
   projectId: z.string().optional(),
   includeArchived: z.boolean().optional(),
   orderBy: z
-    .enum(["updatedAt", "createdAt", "priority"])
+    .enum(['updatedAt', 'createdAt', 'priority'])
     .optional()
     .describe("Default: 'updatedAt' (prefer recency)."),
   // Keyword helpers
@@ -49,19 +49,17 @@ export const ListIssuesInputSchema = PaginationInput.extend({
     .string()
     .optional()
     .describe(
-      "Free-text query; splits into keywords and applies title.containsIgnoreCase per token"
+      'Free-text query; splits into keywords and applies title.containsIgnoreCase per token',
     ),
   keywords: z
     .array(z.string())
     .optional()
-    .describe(
-      "Explicit keywords; applies OR of title.containsIgnoreCase for each"
-    ),
+    .describe('Explicit keywords; applies OR of title.containsIgnoreCase for each'),
   fullDescriptions: z
     .boolean()
     .optional()
     .describe(
-      "If true, include full descriptions in the human-readable message block (structuredContent always includes full description)."
+      'If true, include full descriptions in the human-readable message block (structuredContent always includes full description).',
     ),
 }).strict();
 export type ListIssuesInput = z.infer<typeof ListIssuesInputSchema>;
@@ -77,14 +75,14 @@ export type GetIssuesInput = z.infer<typeof GetIssuesInputSchema>;
 export const ListMyIssuesInputSchema = PaginationInput.extend({
   filter: z.record(z.any()).optional(),
   includeArchived: z.boolean().optional(),
-  orderBy: z.enum(["updatedAt", "createdAt", "priority"]).optional(),
+  orderBy: z.enum(['updatedAt', 'createdAt', 'priority']).optional(),
   q: z.string().optional(),
   keywords: z.array(z.string()).optional(),
   fullDescriptions: z
     .boolean()
     .optional()
     .describe(
-      "If true, include full descriptions in the human-readable message block (structuredContent always includes full description)."
+      'If true, include full descriptions in the human-readable message block (structuredContent always includes full description).',
     ),
 }).strict();
 export type ListMyIssuesInput = z.infer<typeof ListMyIssuesInputSchema>;
@@ -102,21 +100,18 @@ export const CreateIssuesInputSchema = z
             labelIds: z.array(z.string()).optional(),
             assigneeId: z.string().optional(),
             projectId: z.string().optional(),
-            priority: z
-              .enum(["0", "1", "2", "3", "4"])
-              .or(z.number())
-              .optional(),
+            priority: z.enum(['0', '1', '2', '3', '4']).or(z.number()).optional(),
             estimate: z.number().optional(),
             allowZeroEstimate: z
               .boolean()
               .optional()
               .describe(
-                "If true and estimate is 0, the tool will send estimate=0. By default, zero estimates are omitted to avoid team validation errors when zeros are disallowed."
+                'If true and estimate is 0, the tool will send estimate=0. By default, zero estimates are omitted to avoid team validation errors when zeros are disallowed.',
               ),
             dueDate: z.string().optional(),
             parentId: z.string().optional(),
           })
-          .strict()
+          .strict(),
       )
       .min(1),
     parallel: z.boolean().optional(),
@@ -140,22 +135,19 @@ export const UpdateIssuesInputSchema = z
             removeLabelIds: z.array(z.string()).optional(),
             assigneeId: z.string().optional(),
             projectId: z.string().optional(),
-            priority: z
-              .enum(["0", "1", "2", "3", "4"])
-              .or(z.number())
-              .optional(),
+            priority: z.enum(['0', '1', '2', '3', '4']).or(z.number()).optional(),
             estimate: z.number().optional(),
             allowZeroEstimate: z
               .boolean()
               .optional()
               .describe(
-                "If true and estimate is 0, the tool will send estimate=0. By default, zero estimates are omitted to avoid team validation errors when zeros are disallowed."
+                'If true and estimate is 0, the tool will send estimate=0. By default, zero estimates are omitted to avoid team validation errors when zeros are disallowed.',
               ),
             dueDate: z.string().optional(),
             parentId: z.string().optional(),
             archived: z.boolean().optional(),
           })
-          .strict()
+          .strict(),
       )
       .min(1),
     parallel: z.boolean().optional(),
@@ -169,12 +161,12 @@ export const ListProjectsInputSchema = PaginationInput.extend({
     .record(z.any())
     .optional()
     .describe(
-      "GraphQL-style ProjectFilter. Examples: { id: { eq: 'PROJECT_ID' } }, { state: { eq: 'started' } }, { team: { id: { eq: 'TEAM_ID' } } }, { lead: { id: { eq: 'USER_ID' } } }, { targetDate: { lt: 'ISO', gt: 'ISO' } }. For a single project, set filter.id.eq and limit=1."
+      "GraphQL-style ProjectFilter. Examples: { id: { eq: 'PROJECT_ID' } }, { state: { eq: 'started' } }, { team: { id: { eq: 'TEAM_ID' } } }, { lead: { id: { eq: 'USER_ID' } } }, { targetDate: { lt: 'ISO', gt: 'ISO' } }. For a single project, set filter.id.eq and limit=1.",
     ),
   includeArchived: z
     .boolean()
     .optional()
-    .describe("Include archived projects (hidden by default)."),
+    .describe('Include archived projects (hidden by default).'),
 }).strict();
 export type ListProjectsInput = z.infer<typeof ListProjectsInputSchema>;
 
@@ -194,7 +186,7 @@ export const CreateProjectsInputSchema = z
             targetDate: z.string().optional(),
             state: z.string().optional(),
           })
-          .strict()
+          .strict(),
       )
       .min(1),
   })
@@ -215,7 +207,7 @@ export const UpdateProjectsInputSchema = z
             leadId: z.string().optional(),
             archived: z.boolean().optional(),
           })
-          .strict()
+          .strict(),
       )
       .min(1),
   })
@@ -233,7 +225,7 @@ export type ListUsersInput = z.infer<typeof ListUsersInputSchema>;
 export const ListCyclesInputSchema = PaginationInput.extend({
   teamId: z.string(),
   includeArchived: z.boolean().optional(),
-  orderBy: z.enum(["updatedAt", "createdAt"]).optional(),
+  orderBy: z.enum(['updatedAt', 'createdAt']).optional(),
 }).strict();
 export type ListCyclesInput = z.infer<typeof ListCyclesInputSchema>;
 
@@ -252,7 +244,7 @@ export const AddCommentsInputSchema = z
             issueId: z.string(),
             body: z.string().min(1),
           })
-          .strict()
+          .strict(),
       )
       .min(1),
     parallel: z.boolean().optional(),
@@ -260,3 +252,5 @@ export const AddCommentsInputSchema = z
   })
   .strict();
 export type AddCommentsInput = z.infer<typeof AddCommentsInputSchema>;
+
+

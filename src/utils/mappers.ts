@@ -4,7 +4,7 @@ import type {
   ListProjectsOutput,
   ListTeamsOutput,
   ListUsersOutput,
-} from '../schemas/outputs.ts';
+} from '../schemas/outputs.js';
 
 // Generic helpers / guards
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -175,3 +175,5 @@ export async function mapCommentNodeToListItem(
     user,
   };
 }
+
+

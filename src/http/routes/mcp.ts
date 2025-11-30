@@ -1,11 +1,14 @@
+// MCP routes for Hono
+// Simplified provider-agnostic version from Spotify MCP
+
 import { randomUUID } from 'node:crypto';
 import type { HttpBindings } from '@hono/node-server';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { toFetchResponse, toReqRes } from 'fetch-to-node';
 import { Hono } from 'hono';
-import { runWithRequestContext } from '../../core/context.ts';
-import { logger } from '../../utils/logger.ts';
+import { contextRegistry } from '../../core/context.js';
+import { logger } from '../../utils/logger.js';
 
 export function buildMcpRoutes(params: {
   server: McpServer;
@@ -14,7 +17,21 @@ export function buildMcpRoutes(params: {
   const { server, transports } = params;
   const app = new Hono<{ Bindings: HttpBindings }>();
 
+  // Track which transports have been connected to avoid duplicate connect() calls
+  const connectedTransports = new WeakSet<StreamableHTTPServerTransport>();
+
   const MCP_SESSION_HEADER = 'Mcp-Session-Id';
+
+  /**
+   * Connect transport to server only if not already connected.
+   * McpServer.connect() should be called once per transport lifecycle.
+   */
+  async function ensureConnected(transport: StreamableHTTPServerTransport): Promise<void> {
+    if (!connectedTransports.has(transport)) {
+      await server.connect(transport);
+      connectedTransports.add(transport);
+    }
+  }
 
   app.post('/', async (c) => {
     const { req, res } = toReqRes(c.req.raw);
@@ -28,95 +45,82 @@ export function buildMcpRoutes(params: {
         body = undefined;
       }
 
-      // Handle clients that probe unsupported namespaces: return empty lists
-      if (
-        body &&
-        typeof body === 'object' &&
-        (body as { jsonrpc?: unknown }).jsonrpc === '2.0' &&
-        typeof (body as { method?: unknown }).method === 'string' &&
-        (body as { id?: unknown }).id !== undefined
-      ) {
-        const rpc = body as { id: string | number; method: string };
-        if (rpc.method === 'resources/list') {
-          res.setHeader('content-type', 'application/json; charset=utf-8');
-          res.end(
-            JSON.stringify({
-              jsonrpc: '2.0',
-              id: rpc.id,
-              result: { resources: [] },
-            }),
-          );
-          return toFetchResponse(res);
-        }
-        if (rpc.method === 'prompts/list') {
-          res.setHeader('content-type', 'application/json; charset=utf-8');
-          res.end(
-            JSON.stringify({
-              jsonrpc: '2.0',
-              id: rpc.id,
-              result: { prompts: [] },
-            }),
-          );
-          return toFetchResponse(res);
-        }
-      }
-
       const isInitialize = Boolean(
         body && (body as { method?: string }).method === 'initialize',
       );
 
+      const plannedSid = isInitialize ? sessionIdHeader || randomUUID() : undefined;
+
+      void logger.info('mcp_request', {
+        message: 'Processing MCP request',
+        sessionId: plannedSid || sessionIdHeader,
+        isInitialize,
+        hasSessionIdHeader: !!sessionIdHeader,
+        hasAuthorizationHeader: !!req.headers.authorization,
+        requestMethod: req.method,
+        bodyMethod: (body as { method?: string })?.method,
+      });
+
       let transport = sessionIdHeader ? transports.get(sessionIdHeader) : undefined;
-      let didCreate = false;
       if (!transport) {
         const created = new StreamableHTTPServerTransport({
-          sessionIdGenerator: isInitialize
-            ? () => sessionIdHeader || randomUUID()
-            : undefined,
+          sessionIdGenerator: isInitialize ? () => plannedSid as string : undefined,
           onsessioninitialized: isInitialize
             ? (sid: string) => {
                 transports.set(sid, created);
-                res.setHeader(MCP_SESSION_HEADER, sid);
+                void logger.info('mcp', {
+                  message: 'Session initialized',
+                  sessionId: sid,
+                });
               }
             : undefined,
         });
         transport = created;
-        didCreate = true;
       }
 
       transport.onerror = (error) => {
         void logger.error('transport', {
           message: 'Transport error',
-          error: (error as Error).message,
+          error: error.message,
         });
       };
 
-      if (didCreate) {
-        await server.connect(transport);
+      // Create request context if body has an ID
+      if (body && typeof body === 'object' && 'id' in body && body.id) {
+        const authContext = (c as unknown as { authContext?: {
+          strategy: 'oauth' | 'bearer' | 'api_key' | 'custom' | 'none';
+          authHeaders: Record<string, string>;
+          resolvedHeaders: Record<string, string>;
+          providerToken?: string;
+          provider?: { access_token: string; refresh_token?: string; expires_at?: number; scopes?: string[] };
+          rsToken?: string;
+        } }).authContext;
+
+        contextRegistry.create(body.id as string | number, plannedSid, {
+          authStrategy: authContext?.strategy,
+          authHeaders: authContext?.authHeaders,
+          resolvedHeaders: authContext?.resolvedHeaders,
+          providerToken: authContext?.providerToken,
+          provider: authContext?.provider,
+          rsToken: authContext?.rsToken,
+        });
       }
 
-      // establish per-request context carrying session and auth headers
-      const ctxHeaders: Record<string, string> | undefined = (
-        c as unknown as {
-          authHeaders?: Record<string, string>;
-        }
-      ).authHeaders;
+      await ensureConnected(transport);
 
-      await runWithRequestContext(
-        {
-          sessionId: sessionIdHeader,
-          authHeaders: ctxHeaders,
-          abortSignal: (c.req.raw as unknown as { signal?: AbortSignal }).signal,
-        },
-        async () => {
-          await transport?.handleRequest(req, res, body);
-        },
-      );
+      // SDK passes requestId to tool handlers, which look up auth context from registry
+      await transport.handleRequest(req, res, body);
 
-      res.on('close', () => {});
+      res.on('close', () => {
+        void logger.debug('mcp', { message: 'Request closed' });
+      });
+
       return toFetchResponse(res);
     } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error('MCP POST /mcp error:', (error as Error).message);
+      void logger.error('mcp', {
+        message: 'Error handling POST request',
+        error: (error as Error).message,
+      });
       return c.json(
         {
           jsonrpc: '2.0',
@@ -146,24 +150,14 @@ export function buildMcpRoutes(params: {
       if (!transport) {
         return c.text('Invalid session', 404);
       }
-      const ctxHeaders: Record<string, string> | undefined = (
-        c as unknown as {
-          authHeaders?: Record<string, string>;
-        }
-      ).authHeaders;
-
-      await runWithRequestContext(
-        {
-          sessionId: sessionIdHeader,
-          authHeaders: ctxHeaders,
-          abortSignal: (c.req.raw as unknown as { signal?: AbortSignal }).signal,
-        },
-        async () => {
-          await transport.handleRequest(req, res);
-        },
-      );
+      await ensureConnected(transport);
+      await transport.handleRequest(req, res);
       return toFetchResponse(res);
-    } catch (_error) {
+    } catch (error) {
+      void logger.error('mcp', {
+        message: 'Error handling GET request',
+        error: (error as Error).message,
+      });
       return c.json(
         {
           jsonrpc: '2.0',
@@ -193,26 +187,16 @@ export function buildMcpRoutes(params: {
       if (!transport) {
         return c.text('Invalid session', 404);
       }
-      const ctxHeaders: Record<string, string> | undefined = (
-        c as unknown as {
-          authHeaders?: Record<string, string>;
-        }
-      ).authHeaders;
-
-      await runWithRequestContext(
-        {
-          sessionId: sessionIdHeader,
-          authHeaders: ctxHeaders,
-          abortSignal: (c.req.raw as unknown as { signal?: AbortSignal }).signal,
-        },
-        async () => {
-          await transport.handleRequest(req, res);
-        },
-      );
+      await ensureConnected(transport);
+      await transport.handleRequest(req, res);
       transports.delete(sessionIdHeader);
       transport.close();
       return toFetchResponse(res);
-    } catch (_error) {
+    } catch (error) {
+      void logger.error('mcp', {
+        message: 'Error handling DELETE request',
+        error: (error as Error).message,
+      });
       return c.json(
         {
           jsonrpc: '2.0',

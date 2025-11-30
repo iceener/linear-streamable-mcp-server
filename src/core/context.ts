@@ -1,53 +1,130 @@
-export type RequestContext = {
-  sessionId?: string;
-  authHeaders?: Record<string, string>;
-  abortSignal?: AbortSignal;
-};
+import type { RequestContext } from '../types/context.js';
+import type { CancellationToken } from '../utils/cancellation.js';
+import { createCancellationToken } from '../utils/cancellation.js';
 
-// Use AsyncLocalStorage to reliably carry context across async boundaries
-import { AsyncLocalStorage } from 'node:async_hooks';
+/**
+ * Global registry for request contexts.
+ * Maps request IDs to their contexts (including cancellation tokens).
+ *
+ * This allows tool handlers to access the cancellation token for the current request.
+ */
+class ContextRegistry {
+  private contexts = new Map<string | number, RequestContext>();
 
-const contextStorage = new AsyncLocalStorage<RequestContext>();
+  /**
+   * Create and register a new request context.
+   */
+  create(
+    requestId: string | number,
+    sessionId?: string,
+    authData?: {
+      authStrategy?: RequestContext['authStrategy'];
+      authHeaders?: RequestContext['authHeaders'];
+      resolvedHeaders?: RequestContext['resolvedHeaders'];
+      rsToken?: string;
+      providerToken?: string;
+      provider?: RequestContext['provider'];
+      /** @deprecated Use providerToken instead */
+      serviceToken?: string;
+    },
+  ): RequestContext {
+    const context: RequestContext = {
+      sessionId,
+      cancellationToken: createCancellationToken(),
+      requestId,
+      timestamp: Date.now(),
+      authStrategy: authData?.authStrategy,
+      authHeaders: authData?.authHeaders,
+      resolvedHeaders: authData?.resolvedHeaders,
+      rsToken: authData?.rsToken,
+      providerToken: authData?.providerToken,
+      provider: authData?.provider,
+      // Legacy support
+      serviceToken: authData?.serviceToken ?? authData?.providerToken,
+    };
 
-export function runWithRequestContext<T>(
-  context: RequestContext,
-  fn: () => Promise<T>,
-): Promise<T> {
-  return contextStorage.run(context, fn);
-}
-
-function getRequestContext(): RequestContext {
-  return contextStorage.getStore() ?? {};
-}
-
-export function getCurrentSessionId(): string | undefined {
-  return getRequestContext().sessionId;
-}
-
-export function getCurrentAuthHeaders(): Record<string, string> | undefined {
-  return getRequestContext().authHeaders;
-}
-
-export function getAuthorizationBearerToken(): string | undefined {
-  const headers = getCurrentAuthHeaders();
-  if (!headers) {
-    return undefined;
+    this.contexts.set(requestId, context);
+    return context;
   }
-  // headers are normalized to lower-case by our middleware; but be defensive
-  const entries = Object.entries(headers);
-  const authEntry = entries.find(([k]) => k.toLowerCase() === 'authorization');
-  if (!authEntry) {
-    return undefined;
+
+  /**
+   * Get the context for a request ID.
+   */
+  get(requestId: string | number): RequestContext | undefined {
+    return this.contexts.get(requestId);
   }
-  const value = authEntry[1];
-  if (!value) {
-    return undefined;
+
+  /**
+   * Get the cancellation token for a request ID.
+   */
+  getCancellationToken(requestId: string | number): CancellationToken | undefined {
+    return this.contexts.get(requestId)?.cancellationToken;
   }
-  // Expect formats like: "Bearer TOKEN" (case-insensitive)
-  const match = /^\s*Bearer\s+(.+)$/i.exec(value);
-  return match ? match[1] : undefined;
+
+  /**
+   * Cancel a request by its ID.
+   */
+  cancel(requestId: string | number, _reason?: string): boolean {
+    const context = this.contexts.get(requestId);
+    if (!context) return false;
+
+    context.cancellationToken.cancel();
+    return true;
+  }
+
+  /**
+   * Delete a request context (cleanup after request completes).
+   */
+  delete(requestId: string | number): void {
+    this.contexts.delete(requestId);
+  }
+
+  /**
+   * Clean up expired contexts (older than 10 minutes).
+   */
+  cleanupExpired(): void {
+    const now = Date.now();
+    const maxAge = 10 * 60 * 1000; // 10 minutes
+
+    for (const [requestId, context] of this.contexts.entries()) {
+      if (now - context.timestamp > maxAge) {
+        this.contexts.delete(requestId);
+      }
+    }
+  }
 }
 
-export function getCurrentAbortSignal(): AbortSignal | undefined {
-  return getRequestContext().abortSignal;
+/**
+ * Global context registry instance.
+ */
+export const contextRegistry = new ContextRegistry();
+
+/**
+ * Interval handle for cleanup - stored for proper shutdown
+ */
+let cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Start the cleanup interval for expired contexts.
+ * Called automatically on module load.
+ */
+export function startContextCleanup(): void {
+  if (cleanupIntervalId) return;
+  cleanupIntervalId = setInterval(() => {
+    contextRegistry.cleanupExpired();
+  }, 60_000);
 }
+
+/**
+ * Stop the cleanup interval.
+ * Call this during graceful shutdown to prevent memory leaks.
+ */
+export function stopContextCleanup(): void {
+  if (cleanupIntervalId) {
+    clearInterval(cleanupIntervalId);
+    cleanupIntervalId = null;
+  }
+}
+
+// Start cleanup on module load
+startContextCleanup();

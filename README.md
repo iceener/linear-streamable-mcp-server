@@ -1,321 +1,393 @@
-# Linear MCP Server (HTTP / OAuth / Remote)
+# Linear MCP Server
 
-> Warning: You connect this server to your MCP client at your own responsibility. Language models can make mistakes, misinterpret instructions, or perform unintended actions. Review tool outputs, verify changes (e.g., with `list_issues`), and prefer small, incremental writes. In production, enforce least‑privilege credentials, audit logs, and approval workflows.
+Streamable HTTP MCP server for Linear — manage issues, projects, teams, cycles, and comments.
 
-A streamable HTTP MCP server for Linear that lets you manage issues, projects, teams, users, comments, and cycles — locally or remotely.
+Author: [overment](https://x.com/_overment)
+
+> [!WARNING]
+> You connect this server to your MCP client at your own responsibility. Language models can make mistakes, misinterpret instructions, or perform unintended actions. Review tool outputs, verify changes (e.g., with `list_issues`), and prefer small, incremental writes.
+>
+> The HTTP/OAuth layer is designed for convenience during development, not production-grade security. If deploying remotely, harden it: proper token validation, secure storage, TLS termination, strict CORS/origin checks, rate limiting, audit logging, and compliance with Linear's terms.
+
+## Comparison
 
 Below is a comparison between the official Linear MCP (top) and this MCP (bottom).
 
 <img src="docs/comparison-hd.gif" width="800" />
 
-### Notice
+## Notice
 
 This repo works in two ways:
+- As a **Node/Hono server** for local workflows
+- As a **Cloudflare Worker** for remote interactions
 
-- As a Node/Hono server for local workflows
-- As a Cloudflare Worker for remote interactions
+For production Cloudflare deployments, see [Remote Model Context Protocol servers (MCP)](https://blog.cloudflare.com/remote-model-context-protocol-servers-mcp).
 
-The HTTP/OAuth setup here is designed for convenience during development, not for production‑grade security. If you’re deploying to Cloudflare, see [Remote Model Context Protocol servers (MCP)](https://blog.cloudflare.com/remote-model-context-protocol-servers-mcp) for details.
+## Motivation
 
-### Motivation
+I'm a big fan of [Linear](https://linear.app) and use it daily. At the time of writing, the official MCP server isn't fully optimized for language models. This server is built with key goals in mind:
 
-I’m a big fan of [Linear](https://linear.app) and use it daily — for both personal projects and professional workflows, including automations. At the time of writing, the official MCP server isn’t fully optimized for language models (this may change soon, as Linear is actively improving it).
+- Let LLMs find Team IDs, Project IDs, Status IDs, or User IDs in a **single action** (`workspace_metadata`) instead of multiple tool calls
+- Include clear MCP instructions and schema descriptions that cut API jargon
+- Map API responses into **human-readable feedback** — useful for both the LLM and user
+- Provide hints and suggestions for next steps, plus tips on recovering from errors
+- Support **batch actions** (e.g., `create_issues` instead of `create_issue`) so the LLM can perform multiple steps in one go
+- Prefetch related values — return both a status ID and actual status name for an issue
+- Hide tools not enabled in a given team's settings (like `list_cycles`) to reduce noise
 
-This server is built with a few key goals in mind:
+In short, it's not a direct mirror of Linear's API — it's tailored so AI agents know exactly how to use it effectively.
 
-- Let LLMs easily find things like Team IDs, Project IDs, Status IDs, or User IDs in a single action (`workspace_metadata`) instead of calling multiple tools just to gather required data.
-- Include clear MCP instructions and schema descriptions that cut API jargon, making it more likely the model uses the right tool in the right order.
-- Map API responses into human‑readable feedback — useful for both the LLM and the user.
-- Provide hints and suggestions for next steps, plus tips on using available data or recovering from errors.
-- Support batch actions (e.g., `add_issues` instead of `add_issue`) so the LLM can perform multiple steps in one go.
-- Prefetch related values — for example, return both a status ID and the actual status name for an issue.
-- Hide tools not enabled in a given team’s settings (like `cycles_list`) to reduce noise.
-- Adjust schemas to match workspace preferences, such as issue priority formats.
+## Features
 
-In short, it’s not a direct mirror of Linear’s API — it’s tailored so AI agents and chat clients know exactly how to use it effectively.
+- ✅ **Issues** — List, search, create, update (state, assignee, labels, priority, etc.)
+- ✅ **Projects** — List, create, update projects
+- ✅ **Teams & Users** — Discover workspace structure
+- ✅ **Cycles** — Browse sprint/cycle planning
+- ✅ **Comments** — List and add comments on issues
+- ✅ **OAuth 2.1** — Secure PKCE flow with RS token mapping
+- ✅ **Dual Runtime** — Node.js/Bun or Cloudflare Workers
+- ✅ **Production Ready** — Encrypted token storage, rate limiting, multi-user support
 
-## Installation & development
+### Design Principles
 
-Prerequisites: [Bun](https://bun.sh/), [Node.js 24+](https://nodejs.org), [Linear](https://linear.app) account. For remote: a [Cloudflare](https://dash.cloudflare.com) account and the [Wrangler](https://www.npmjs.com/package/wrangler) package.
+- **LLM-friendly**: Tools are simplified and unified, not 1:1 API mirrors
+- **Batch-first**: Create/update operations accept arrays to minimize tool calls
+- **Discovery-first**: `workspace_metadata` returns all IDs needed for subsequent calls
+- **Clear feedback**: Every response includes human-readable summaries with diffs
 
-You also need an MCP client such as:
+---
 
-- [HeyAlice](https://heyalice.app) (my personal project)
-- [Claude](https://claude.ai)
+## Installation
 
-### Ways to run (pick one)
+Prerequisites: [Bun](https://bun.sh/), [Node.js 24+](https://nodejs.org), [Linear](https://linear.app) account. For remote: a [Cloudflare](https://dash.cloudflare.com) account.
 
-1. Local (API key)
-2. Local + OAuth
-3. Cloudflare Worker — wrangler dev (local Worker)
-4. Cloudflare Worker — remote deploy
+### Ways to Run (Pick One)
 
-### 1) Quick start (local workflow with API key)
+1. **Local (API key)** — Fastest start
+2. **Local + OAuth** — For multi-user or token refresh
+3. **Cloudflare Worker (wrangler dev)** — Local Worker testing
+4. **Cloudflare Worker (deploy)** — Remote production
 
-This is the easiest way to start. Run the server with your Linear Personal Access Token (Settings → Security).
+---
 
-https://linear.app/[your-account-name]/settings/account/security
+### 1. Local (API Key) — Quick Start
+
+Run the server with your Linear Personal Access Token from [Settings → Security](https://linear.app/settings/account/security).
 
 ```bash
-git clone https://github.com/iceener/linear-streamable-mcp-server
-cd linear
+git clone <repo>
+cd linear-mcp
 bun install
-cp env.local-api.example .env
-# Update your Linear API key in .env
-bun dev
+cp env.example .env
 ```
 
-Now connect this server to Alice (Settings → MCP) and set it up as follows:
+Edit `.env`:
 
-<img src="docs/alice-local-mcp.png" width="600" />
-
-Or use Claude Desktop with the following settings:
+```env
+PORT=3000
+AUTH_STRATEGY=bearer
+BEARER_TOKEN=lin_api_xxxx  # Your Linear API key
+```
 
 ```bash
+bun dev
+# MCP: http://127.0.0.1:3000/mcp
+```
+
+Connect to your MCP client:
+
+**Claude Desktop / Cursor:**
+
+```json
 {
   "mcpServers": {
-    "remote-example": {
+    "linear": {
       "command": "bunx",
       "args": [
         "mcp-remote",
-        "http://localhost:3040/mcp",
+        "http://localhost:3000/mcp",
         "--header",
-        "Authorization: ${LINEAR_API_KEY}"
+        "Authorization: Bearer ${LINEAR_API_KEY}"
       ]
     }
   }
 }
 ```
 
-### 2) Alternative: Local + OAuth
+---
 
-This is a more advanced workflow because it requires creating an OAuth application in Linear. Example:
+### 2. Local + OAuth
 
-<img src="docs/linear-oauth.png" width="600" />
+More advanced — requires creating an OAuth application in Linear.
 
-```bash
-git clone https://github.com/iceener/linear-streamable-mcp-server
-cd linear
-bun install
-cp env.local-oauth.example .env
-
-# Update OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET
-# Add the following redirect URIs:
-# alice://oauth/callback
-# http://127.0.0.1:3041/linear/callback
-# http://localhost:3041/linear/callback
-# http://localhost:8788/linear/callback
-# https://claude.ai/api/mcp/auth_callback
-# https://claude.com/api/mcp/auth_callback
-# https://<worker-name>.<account>.workers.dev/linear/callback
-
-bun dev
-```
-
-Tip: the local Authorization Server (for OAuth) runs on PORT+1. If `PORT=3040`, auth is on `http://localhost:3041`.
-
-When the server is up, connect to Alice:
-
-<img src="docs/alice-local-oauth-mcp.png" width="600" />
-
-Alternatively, connect with Claude Desktop:
+1. Create an OAuth app at [Linear Settings → API → OAuth Applications](https://linear.app/settings/api)
+2. Set redirect URIs:
+   ```
+   http://127.0.0.1:3001/oauth/callback
+   alice://oauth/callback
+   ```
+3. Copy Client ID and Secret
 
 ```bash
-{
-  "mcpServers": {
-    "linear": {
-      "command": "bunx",
-      "args": [
-        "mcp-remote",
-        "http://localhost:3040/mcp",
-        "--transport",
-        "http-only"
-      ],
-      "env": { "NO_PROXY": "127.0.0.1,localhost" }
-    }
-  }
-}
+cp env.example .env
 ```
 
-#### RS‑only mode (recommended for remote clients)
-
-Enable these flags to require RS‑minted bearer tokens. When enabled, requests without `Authorization` or with a non‑mapped `Bearer <opaque>` will receive `401` with `WWW-Authenticate` so OAuth can start (works with `mcp-remote`).
+Edit `.env`:
 
 ```env
-# Challenge when Authorization missing or not one of our RS tokens
-AUTH_REQUIRE_RS=true
+PORT=3000
+AUTH_ENABLED=true
 
-# If you still want to allow Linear PATs as Bearer in RS‑only mode, set:
-AUTH_ALLOW_LINEAR_BEARER=false
+PROVIDER_CLIENT_ID=your_client_id
+PROVIDER_CLIENT_SECRET=your_client_secret
+
+OAUTH_SCOPES=read write
+OAUTH_REDIRECT_URI=alice://oauth/callback
+OAUTH_REDIRECT_ALLOWLIST=alice://oauth/callback,http://127.0.0.1:3001/oauth/callback
 ```
-
-### 3) Cloudflare Worker — wrangler dev (local Worker)
-
-Fast way to test the Worker locally.
 
 ```bash
-cd linear
-bun x wrangler dev --local | cat
+bun dev
+# MCP: http://127.0.0.1:3000/mcp
+# OAuth: http://127.0.0.1:3001
 ```
 
-If you want to pass a PAT directly in dev:
+> **Tip:** The Authorization Server runs on PORT+1.
 
-```bash
-cd linear
-bun x wrangler secret put LINEAR_API_KEY
-bun x wrangler dev --local | cat
-```
-
-With OAuth, also set:
-
-```bash
-cd linear
-bun x wrangler secret put OAUTH_CLIENT_ID
-bun x wrangler secret put OAUTH_CLIENT_SECRET
-# Ensure OAUTH_SCOPES and allowlist in wrangler.toml
-bun x wrangler dev --local | cat
-```
-
-Endpoint (dev): `http://127.0.0.1:8787/mcp` (Wrangler prints the exact port).
-
-### 4) Cloudflare Worker — remote deploy
-
-Wrangler reference (already included as `linear/wrangler.toml`):
-
-```toml
-name = "linear-mcp-worker"
-main = "src/worker.ts"
-compatibility_date = "2025-06-18"
-workers_dev = true
-compatibility_flags = ["nodejs_compat"]
-
-[vars]
-MCP_PROTOCOL_VERSION = "2025-06-18"
-AUTH_ENABLED = "true"
-AUTH_REQUIRE_RS = "true"
-AUTH_ALLOW_LINEAR_BEARER = "false"
-OAUTH_AUTHORIZATION_URL = "https://linear.app/oauth/authorize"
-OAUTH_TOKEN_URL = "https://api.linear.app/oauth/token"
-OAUTH_SCOPES = "read write"
-OAUTH_REDIRECT_ALLOW_ALL = "false"       # dev helper; keep false in prod
-OAUTH_REDIRECT_URI = "alice://oauth/callback"
-OAUTH_REDIRECT_ALLOWLIST = "alice://oauth/callback,https://claude.ai/api/mcp/auth_callback,https://claude.com/api/mcp/auth_callback,https://<worker-name>.<account>.workers.dev/linear/callback"
-NODE_ENV = "development"                 # allows localhost callback in dev
-
-[[kv_namespaces]]
-binding = "TOKENS"
-id = "REDACTED"
-```
-
-Deploy with API key:
-
-```bash
-cd linear
-bun x wrangler secret put LINEAR_API_KEY
-bun x wrangler deploy
-```
-
-Endpoint: `https://<worker-name>.<account>.workers.dev/mcp`.
-
----
-
-## Environment examples
-
-- Local (API key): `env.local-api.example`
-- Local + OAuth: `env.local-oauth.example`
-- Generic defaults: `env.example`
-
-### Remote (Cloudflare Worker) with OAuth
-
-1. Create KV for token mapping and add it to `wrangler.toml`:
-
-```bash
-bun x wrangler kv namespace create TOKENS
-```
-
-2. Set secrets and vars:
-
-```bash
-cd linear
-bun x wrangler secret put OAUTH_CLIENT_ID
-bun x wrangler secret put OAUTH_CLIENT_SECRET
-# Optionally set LINEAR_ACCESS_TOKEN or LINEAR_API_KEY if you prefer direct tokens
-```
-
-3. Ensure `OAUTH_SCOPES = "read write"` and include your Worker callback in the Linear app and allowlist:
-
-```text
-https://<worker-name>.<account>.workers.dev/linear/callback
-```
-
-4. Deploy:
-
-```bash
-bun x wrangler deploy
-```
-
-The Worker advertises OAuth discovery and maps Resource‑Server tokens to Linear tokens using KV. It reuses the same tool handlers as the local server. In RS‑only mode, it will:
-
-- 401‑challenge when Authorization is missing
-- 401‑challenge when a non‑mapped Bearer is presented (unless `AUTH_ALLOW_LINEAR_BEARER=true`)
-- Rewrite a mapped RS Bearer to a Linear access token before invoking tools
-
-#### Troubleshooting (Worker)
-
-- If OAuth doesn’t start: `curl -i -X POST https://<worker>/mcp ...` should return `401` with `WWW-Authenticate` and `Mcp-Session-Id`.
-- If tools appear empty in Claude: ensure the Worker returns JSON Schema for `tools/list` (this repo does), and configure Claude with `mcp-remote` (not Research connectors).
-- If redirect is blocked: set a valid `OAUTH_REDIRECT_URI` and allowlist; for dev you can set `NODE_ENV=development` and keep loopback hosts.
-
----
-
-## Client configuration
-
-MCP Inspector (quick test):
-
-```bash
-bunx @modelcontextprotocol/inspector
-# Connect to: http://localhost:3040/mcp (local) or your Worker /mcp URL
-```
-
-Claude Desktop / Cursor via mcp‑remote:
+**Claude Desktop:**
 
 ```json
 {
   "mcpServers": {
     "linear": {
       "command": "bunx",
-      "args": [
-        "mcp-remote",
-        "http://localhost:3040/mcp",
-        "--transport",
-        "http-only"
-      ],
+      "args": ["mcp-remote", "http://localhost:3000/mcp", "--transport", "http-only"],
       "env": { "NO_PROXY": "127.0.0.1,localhost" }
     }
   }
 }
 ```
 
-For Cloudflare, replace the URL with `https://<worker-name>.<account>.workers.dev/mcp`.
+#### RS-Only Mode (Recommended for Remote)
+
+Enable these flags to require RS-minted bearer tokens:
+
+```env
+AUTH_REQUIRE_RS=true
+AUTH_ALLOW_DIRECT_BEARER=false
+```
+
+When enabled, requests without `Authorization` or with non-mapped tokens receive `401` with `WWW-Authenticate` so OAuth can start.
+
+---
+
+### 3. Cloudflare Worker (Local Dev)
+
+```bash
+bun x wrangler dev --local | cat
+```
+
+With OAuth:
+
+```bash
+bun x wrangler secret put PROVIDER_CLIENT_ID
+bun x wrangler secret put PROVIDER_CLIENT_SECRET
+bun x wrangler dev --local | cat
+```
+
+Endpoint: `http://127.0.0.1:8787/mcp`
+
+---
+
+### 4. Cloudflare Worker (Deploy)
+
+1. Create KV namespace:
+
+```bash
+bun x wrangler kv:namespace create TOKENS
+```
+
+2. Update `wrangler.toml` with KV namespace ID
+
+3. Set secrets:
+
+```bash
+bun x wrangler secret put PROVIDER_CLIENT_ID
+bun x wrangler secret put PROVIDER_CLIENT_SECRET
+
+# Generate encryption key (32-byte base64url):
+openssl rand -base64 32 | tr -d '=' | tr '+/' '-_'
+bun x wrangler secret put RS_TOKENS_ENC_KEY
+```
+
+> **Note:** `RS_TOKENS_ENC_KEY` encrypts OAuth tokens stored in KV (AES-256-GCM).
+
+4. Update redirect URI and allowlist in `wrangler.toml`
+
+5. Add Workers URL to your Linear OAuth app's redirect URIs
+
+6. Deploy:
+
+```bash
+bun x wrangler deploy
+```
+
+Endpoint: `https://<worker-name>.<account>.workers.dev/mcp`
+
+---
+
+## Client Configuration
+
+**MCP Inspector (quick test):**
+
+```bash
+bunx @modelcontextprotocol/inspector
+# Connect to: http://localhost:3000/mcp
+```
+
+**Claude Desktop / Cursor:**
+
+```json
+{
+  "mcpServers": {
+    "linear": {
+      "command": "bunx",
+      "args": ["mcp-remote", "http://127.0.0.1:3000/mcp", "--transport", "http-only"],
+      "env": { "NO_PROXY": "127.0.0.1,localhost" }
+    }
+  }
+}
+```
+
+For Cloudflare, replace URL with `https://<worker-name>.<account>.workers.dev/mcp`.
+
+---
+
+## Tools
+
+### `workspace_metadata`
+
+Discover workspace entities and IDs. **Call this first** when you don't know IDs.
+
+```ts
+// Input
+{
+  include?: ("profile"|"teams"|"workflow_states"|"labels"|"projects"|"favorites")[];
+  teamIds?: string[];
+  project_limit?: number;
+  label_limit?: number;
+}
+
+// Output
+{
+  viewer: { id, name, email, displayName, timezone };
+  teams: Array<{ id, key, name, cyclesEnabled, defaultIssueEstimate }>;
+  workflowStatesByTeam: Record<teamId, Array<{ id, name, type }>>;
+  labelsByTeam: Record<teamId, Array<{ id, name, color }>>;
+  projects: Array<{ id, name, state, teamId, leadId, targetDate }>;
+}
+```
+
+### `list_issues`
+
+Search and filter issues with powerful GraphQL filtering.
+
+```ts
+// Input
+{
+  teamId?: string;
+  projectId?: string;
+  filter?: IssueFilter;        // GraphQL-style: { state: { type: { eq: "started" } } }
+  q?: string;                  // Title search tokens
+  keywords?: string[];         // Alternative to q
+  includeArchived?: boolean;
+  orderBy?: "updatedAt" | "createdAt" | "priority";
+  limit?: number;              // 1-100
+  cursor?: string;             // Pagination
+  fullDescriptions?: boolean;
+}
+
+// Output
+{
+  items: Array<{
+    id, identifier, title, description?,
+    stateId, stateName, projectId?, projectName?,
+    assigneeId?, assigneeName?, labels[], dueDate?, url
+  }>;
+  cursor?: string;
+  nextCursor?: string;
+  limit: number;
+}
+```
+
+### `create_issues`
+
+Create multiple issues in one call.
+
+```ts
+{
+  items: Array<{
+    teamId: string;
+    title: string;
+    description?: string;
+    stateId?: string;
+    labelIds?: string[];
+    assigneeId?: string;       // Defaults to current viewer
+    projectId?: string;
+    priority?: number;         // 0-4
+    estimate?: number;
+    dueDate?: string;          // YYYY-MM-DD
+    parentId?: string;
+  }>;
+  parallel?: boolean;
+}
+```
+
+### `update_issues`
+
+Update issues in batch (state, labels, assignee, metadata).
+
+```ts
+{
+  items: Array<{
+    id: string;
+    title?: string;
+    description?: string;
+    stateId?: string;
+    labelIds?: string[];
+    addLabelIds?: string[];     // Incremental add
+    removeLabelIds?: string[];  // Incremental remove
+    assigneeId?: string;
+    projectId?: string;
+    priority?: number;
+    estimate?: number;
+    dueDate?: string;
+    archived?: boolean;
+  }>;
+  parallel?: boolean;
+}
+```
+
+### Other Tools
+
+- `list_my_issues` — Issues assigned to current user
+- `get_issues` — Fetch issues by ID (batch)
+- `list_projects` / `create_projects` / `update_projects` — Manage projects
+- `list_teams` / `list_users` — Discover workspace structure
+- `list_cycles` — Browse team cycles (if enabled)
+- `list_comments` / `add_comments` — Issue comments
 
 ---
 
 ## Examples
 
-### 1) List my issues due today
-
-Request (get viewer timezone/id for context):
+### 1. List my issues due today
 
 ```json
-{
-  "name": "workspace_metadata",
-  "arguments": { "include": ["profile"] }
-}
-```
+// First, get viewer info
+{ "name": "workspace_metadata", "arguments": { "include": ["profile"] } }
 
-Request (issues assigned to me, due today):
-
-```json
+// Then list issues
 {
   "name": "list_my_issues",
   "arguments": {
@@ -326,82 +398,46 @@ Request (issues assigned to me, due today):
 }
 ```
 
-Response (example):
-
+**Response:**
 ```
 My issues: 1 (limit 20). Preview:
-- [OVE-142 — Publish release notes](https://linear.app/example/issue/OVE-142/publish-release-notes) — state Done; project overment; due 2025-08-15; assignee Adam
+- [OVE-142 — Publish release notes](https://linear.app/.../OVE-142) — state Done; due 2025-08-15
 ```
 
-### 2) Create an issue for Alice v3.8 and add it to the project
-
-Request (discover team/project ids):
-
-````json
-{
-  "name": "workspace_metadata",
-  "arguments": { "include": ["teams", "projects", "profile"] }
-}
-``;
-
-Create (assigneeId omitted – this tool defaults to current viewer):
+### 2. Create an issue and add it to a project
 
 ```json
+// Discover IDs first
+{ "name": "workspace_metadata", "arguments": { "include": ["teams", "projects"] } }
+
+// Create (assigneeId defaults to current viewer)
 {
   "name": "create_issues",
   "arguments": {
-    "items": [
-      {
-        "title": "Release Alice v3.8 app",
-        "teamId": "TEAM_ID",
-        "projectId": "ALICE_PROJECT_ID",
-        "dueDate": "2025-08-18",
-        "priority": 2,
-        "description": "Deploy and release Alice v3.8 to production"
-      }
-    ]
+    "items": [{
+      "title": "Release Alice v3.8",
+      "teamId": "TEAM_ID",
+      "projectId": "PROJECT_ID",
+      "dueDate": "2025-08-18",
+      "priority": 2
+    }]
   }
 }
-````
-
-Response (example):
-
-```
-Created issues: 1 / 1. OK: item[0]. Next: Use list_issues (by id or number+team.key/team.id, limit=1) to verify details.
 ```
 
-### 3) Reschedule a release and mark a meeting as Done
+**Response:**
+```
+Created issues: 1 / 1. OK: item[0].
+Next: Use list_issues to verify details.
+```
 
-Find the release issue:
+### 3. Batch update: reschedule + mark as Done
 
 ```json
-{
-  "name": "list_issues",
-  "arguments": { "q": "Alice release", "limit": 5 }
-}
-```
+// Resolve workflow states first
+{ "name": "workspace_metadata", "arguments": { "include": ["workflow_states"], "teamIds": ["TEAM_ID"] } }
 
-Find the meeting issue:
-
-```json
-{
-  "name": "list_issues",
-  "arguments": { "q": "team meeting", "limit": 20 }
-}
-```
-
-Resolve workflow states (Done) for the team:
-
-```json
-{
-  "name": "workspace_metadata",
-  "arguments": { "include": ["workflow_states"], "teamIds": ["TEAM_ID"] }
-}
-```
-
-Update both:
-
-```json
+// Update both issues
 {
   "name": "update_issues",
   "arguments": {
@@ -413,15 +449,88 @@ Update both:
 }
 ```
 
-Response (example):
-
+**Response:**
 ```
 Updated issues: 2 / 2. OK: RELEASE_UUID, MEETING_UUID
-- [OVE-231 — Release Alice v3.8 app](https://linear.app/example/issue/OVE-231/release-alice-v38-app) (id RELEASE_UUID)
-  Due date: 2025-08-18 → 2025-08-16
-- [OVE-224 — Team meeting](https://linear.app/example/issue/OVE-224/team-meeting) (id MEETING_UUID)
-  State: Current → Done
+- [OVE-231 — Release Alice v3.8] Due date: 2025-08-18 → 2025-08-16
+- [OVE-224 — Team meeting] State: Current → Done
 ```
+
+---
+
+## HTTP Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/mcp` | POST | MCP JSON-RPC 2.0 |
+| `/mcp` | GET | SSE stream (Node.js only) |
+| `/health` | GET | Health check |
+| `/.well-known/oauth-authorization-server` | GET | OAuth AS metadata |
+| `/.well-known/oauth-protected-resource` | GET | OAuth RS metadata |
+
+OAuth (PORT+1):
+- `GET /authorize` — Start OAuth flow
+- `GET /oauth/callback` — Provider callback
+- `POST /token` — Token exchange
+- `POST /revoke` — Revoke tokens
+
+---
+
+## Development
+
+```bash
+bun dev           # Start with hot reload
+bun run typecheck # TypeScript check
+bun run lint      # Lint code
+bun run build     # Production build
+bun start         # Run production
+```
+
+---
+
+## Architecture
+
+```
+src/
+├── shared/
+│   ├── tools/
+│   │   └── linear/         # Tool definitions (work in Node + Workers)
+│   │       ├── workspace-metadata.ts
+│   │       ├── list-issues.ts
+│   │       ├── create-issues.ts
+│   │       ├── update-issues.ts
+│   │       ├── projects.ts
+│   │       ├── comments.ts
+│   │       ├── cycles.ts
+│   │       └── shared/     # Formatting, validation, snapshots
+│   ├── oauth/              # OAuth flow (PKCE, discovery)
+│   └── storage/            # Token storage (file, KV, memory)
+├── services/
+│   └── linear/
+│       └── client.ts       # LinearClient wrapper with auth
+├── schemas/
+│   ├── inputs.ts           # Zod input schemas
+│   └── outputs.ts          # Zod output schemas
+├── config/
+│   └── metadata.ts         # Server & tool descriptions
+├── index.ts                # Node.js entry
+└── worker.ts               # Workers entry
+```
+
+---
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| "Workspace does not exist" | Verify your OAuth app is in the correct Linear workspace. Check PROVIDER_CLIENT_ID. |
+| "Unauthorized" | Complete OAuth flow. Tokens may have expired. |
+| "State not found" | Use `workspace_metadata` to get valid stateIds for the team. |
+| "Rate limited" | Linear has strict rate limits. Wait and retry. |
+| OAuth doesn't start (Worker) | `curl -i -X POST https://<worker>/mcp` should return `401` with `WWW-Authenticate`. |
+| Tools empty in Claude | Ensure Worker returns JSON Schema for `tools/list`; use `mcp-remote`. |
+
+---
 
 ## License
 

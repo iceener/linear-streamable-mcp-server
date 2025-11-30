@@ -1,9 +1,3 @@
-.data/
-.env
-dist/
-node_modules/
-_spec/
-
 ## Logs
 logs
 *.log
@@ -108,7 +102,5 @@ nohup.out
 *.orig
 *.pem
 
-## Spec
-_spec/spotify-api/*.md
+.wrangler/
 .data/
-.cursor/
