@@ -7,7 +7,7 @@ import { toolsMetadata } from '../../../config/metadata.js';
 import { ListUsersOutputSchema } from '../../../schemas/outputs.js';
 import { getLinearClient } from '../../../services/linear/client.js';
 import { mapUserNodeToListItem } from '../../../utils/mappers.js';
-import { summarizeList } from '../../../utils/messages.js';
+import { summarizeList, previewLinesFromItems } from '../../../utils/messages.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
 
 const InputSchema = z.object({
@@ -45,11 +45,22 @@ export const listUsersTool = defineTool({
       limit,
     });
 
+    const preview = previewLinesFromItems(
+      items as unknown as Record<string, unknown>[],
+      (u) => {
+        const name = (u.displayName as string) ?? (u.name as string) ?? (u.id as string);
+        const email = u.email as string | undefined;
+        return `${name}${email ? ` <${email}>` : ''} → ${u.id as string}`;
+      },
+    );
+
     const text = summarizeList({
       subject: 'Users',
       count: items.length,
       limit,
       nextCursor: structured.nextCursor,
+      previewLines: preview,
+      nextSteps: ['Use user id as assigneeId in create_issues or update_issues.'],
     });
 
     return {
@@ -58,5 +69,10 @@ export const listUsersTool = defineTool({
     };
   },
 });
+
+
+
+
+
 
 

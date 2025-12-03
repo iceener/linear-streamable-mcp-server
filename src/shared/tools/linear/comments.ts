@@ -7,7 +7,7 @@ import { toolsMetadata } from '../../../config/metadata.js';
 import { config } from '../../../config/env.js';
 import { AddCommentsOutputSchema, ListCommentsOutputSchema } from '../../../schemas/outputs.js';
 import { getLinearClient } from '../../../services/linear/client.js';
-import { makeConcurrencyGate } from '../../../utils/limits.js';
+import { makeConcurrencyGate, withRetry, delay } from '../../../utils/limits.js';
 import { logger } from '../../../utils/logger.js';
 import { mapCommentNodeToListItem } from '../../../utils/mappers.js';
 import { summarizeBatch, summarizeList, previewLinesFromItems } from '../../../utils/messages.js';
@@ -117,6 +117,11 @@ export const addCommentsTool = defineTool({
         if (context.signal?.aborted) {
           throw new Error('Operation aborted');
         }
+
+        // Add small delay between requests to avoid rate limits
+        if (i > 0) {
+          await delay(100);
+        }
         
         const call = () =>
           client.createComment({
@@ -124,7 +129,10 @@ export const addCommentsTool = defineTool({
             body: it.body,
           });
         
-        const payload = args.parallel === true ? await call() : await gate(call);
+        const payload = await withRetry(
+          () => (args.parallel === true ? call() : gate(call)),
+          { maxRetries: 3, baseDelayMs: 500 },
+        );
         
         results.push({
           index: i,
@@ -184,5 +192,10 @@ export const addCommentsTool = defineTool({
     return { content: parts, structuredContent: structured };
   },
 });
+
+
+
+
+
 
 

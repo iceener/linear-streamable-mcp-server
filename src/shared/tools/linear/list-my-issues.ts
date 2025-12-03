@@ -190,7 +190,6 @@ export const listMyIssuesTool = defineTool({
 
     // Use shared details formatting
     const details = items
-      .slice(0, 5)
       .map((i) =>
         formatIssueDetails(i, {
           fullDescriptions: args.fullDescriptions,
@@ -208,5 +207,10 @@ export const listMyIssuesTool = defineTool({
     return { content: parts, structuredContent: structured };
   },
 });
+
+
+
+
+
 
 

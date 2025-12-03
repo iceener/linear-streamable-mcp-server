@@ -7,7 +7,7 @@ import { toolsMetadata } from '../../../config/metadata.js';
 import { ListTeamsOutputSchema } from '../../../schemas/outputs.js';
 import { getLinearClient } from '../../../services/linear/client.js';
 import { mapTeamNodeToListItem } from '../../../utils/mappers.js';
-import { summarizeList } from '../../../utils/messages.js';
+import { summarizeList, previewLinesFromItems } from '../../../utils/messages.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
 
 const InputSchema = z.object({
@@ -45,11 +45,22 @@ export const listTeamsTool = defineTool({
       limit,
     });
 
+    const preview = previewLinesFromItems(
+      items as unknown as Record<string, unknown>[],
+      (t) => {
+        const key = t.key as string | undefined;
+        const name = t.name as string;
+        return `${key ? `${key} — ` : ''}${name} → ${t.id as string}`;
+      },
+    );
+
     const text = summarizeList({
       subject: 'Teams',
       count: items.length,
       limit,
       nextCursor: structured.nextCursor,
+      previewLines: preview,
+      nextSteps: ['Use team id as teamId in list_issues, create_issues, or workspace_metadata.'],
     });
 
     return {
@@ -58,5 +69,10 @@ export const listTeamsTool = defineTool({
     };
   },
 });
+
+
+
+
+
 
 

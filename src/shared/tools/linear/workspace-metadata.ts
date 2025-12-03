@@ -280,6 +280,36 @@ export const workspaceMetadataTool = defineTool({
       }),
     );
 
+    if (include.includes('workflow_states') && Object.keys(statesByTeamComputed).length > 0) {
+      const statePreviewLines: string[] = [];
+      for (const [teamId, states] of Object.entries(statesByTeamComputed)) {
+        const team = teams.find((t) => t.id === teamId);
+        const teamLabel = team?.key ?? team?.name ?? teamId;
+        const statesList = states.map((s) => `${s.name} [${s.type}] → ${s.id}`).join(', ');
+        statePreviewLines.push(`${teamLabel}: ${statesList}`);
+      }
+      summaryLines.push(
+        summarizeList({
+          subject: 'Workflow States',
+          count: summary.stateCount,
+          previewLines: statePreviewLines,
+        }),
+      );
+    }
+
+    if (include.includes('projects') && Array.isArray(structured.projects) && structured.projects.length > 0) {
+      const projectPreviewLines = (structured.projects as Array<{ id: string; name: string; state?: string }>).map(
+        (p) => `${p.name} [${p.state ?? 'unknown'}] → ${p.id}`,
+      );
+      summaryLines.push(
+        summarizeList({
+          subject: 'Projects',
+          count: structured.projects.length,
+          previewLines: projectPreviewLines,
+        }),
+      );
+    }
+
     parts.push({
       type: 'text',
       text: `Loaded workspace bootstrap for ${viewerBit}${viewerIdBit}. ${summaryLines.join(' ')}`,
@@ -292,5 +322,10 @@ export const workspaceMetadataTool = defineTool({
     return { content: parts, structuredContent: structured };
   },
 });
+
+
+
+
+
 
 

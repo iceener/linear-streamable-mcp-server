@@ -11,7 +11,7 @@ import {
   UpdateProjectsOutputSchema,
 } from '../../../schemas/outputs.js';
 import { getLinearClient } from '../../../services/linear/client.js';
-import { makeConcurrencyGate } from '../../../utils/limits.js';
+import { makeConcurrencyGate, withRetry, delay } from '../../../utils/limits.js';
 import { logger } from '../../../utils/logger.js';
 import { mapProjectNodeToListItem } from '../../../utils/mappers.js';
 import { summarizeBatch, summarizeList, previewLinesFromItems } from '../../../utils/messages.js';
@@ -123,6 +123,11 @@ export const createProjectsTool = defineTool({
         if (context.signal?.aborted) {
           throw new Error('Operation aborted');
         }
+
+        // Add small delay between requests to avoid rate limits
+        if (i > 0) {
+          await delay(100);
+        }
         
         const call = () =>
           client.createProject({
@@ -133,7 +138,10 @@ export const createProjectsTool = defineTool({
             teamIds: it.teamId ? [it.teamId] : [],
           });
         
-        const payload = args.items.length > 1 ? await gate(call) : await call();
+        const payload = await withRetry(
+          () => (args.items.length > 1 ? gate(call) : call()),
+          { maxRetries: 3, baseDelayMs: 500 },
+        );
         
         results.push({
           index: i,
@@ -233,6 +241,11 @@ export const updateProjectsTool = defineTool({
         if (context.signal?.aborted) {
           throw new Error('Operation aborted');
         }
+
+        // Add small delay between requests to avoid rate limits
+        if (i > 0) {
+          await delay(100);
+        }
         
         const call = () =>
           client.updateProject(it.id, {
@@ -242,7 +255,10 @@ export const updateProjectsTool = defineTool({
             targetDate: it.targetDate,
           });
         
-        const payload = args.items.length > 1 ? await gate(call) : await call();
+        const payload = await withRetry(
+          () => (args.items.length > 1 ? gate(call) : call()),
+          { maxRetries: 3, baseDelayMs: 500 },
+        );
         
         results.push({ index: i, ok: payload.success ?? true, id: it.id });
       } catch (error) {
@@ -299,5 +315,10 @@ export const updateProjectsTool = defineTool({
     return { content: parts, structuredContent: structured };
   },
 });
+
+
+
+
+
 
 

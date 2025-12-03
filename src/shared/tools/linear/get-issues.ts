@@ -50,28 +50,33 @@ export const getIssuesTool = defineTool({
           name: l.name,
         }));
 
+        // Await lazy-loaded relations
+        const assigneeData = await issue.assignee;
+        const stateData = await issue.state;
+        const projectData = await issue.project;
+
         const structured = GetIssueOutputSchema.parse({
           id: issue.id,
           title: issue.title,
           description: issue.description ?? undefined,
           identifier: issue.identifier ?? undefined,
-          assignee: issue.assignee
+          assignee: assigneeData
             ? {
-                id: (issue.assignee as unknown as { id?: string })?.id ?? undefined,
-                name: (issue.assignee as unknown as { name?: string })?.name ?? undefined,
+                id: assigneeData.id,
+                name: assigneeData.name ?? undefined,
               }
             : undefined,
-          state: issue.state
+          state: stateData
             ? {
-                id: (issue.state as unknown as { id?: string })?.id ?? '',
-                name: (issue.state as unknown as { name?: string })?.name ?? '',
-                type: (issue.state as unknown as { type?: string })?.type,
+                id: stateData.id,
+                name: stateData.name ?? '',
+                type: (stateData as unknown as { type?: string })?.type,
               }
             : undefined,
-          project: issue.project
+          project: projectData
             ? {
-                id: (issue.project as unknown as { id?: string })?.id ?? '',
-                name: (issue.project as unknown as { name?: string })?.name ?? undefined,
+                id: projectData.id,
+                name: projectData.name ?? undefined,
               }
             : undefined,
           labels,
@@ -127,7 +132,6 @@ export const getIssuesTool = defineTool({
 
     const previewLines = results
       .filter((r) => r.ok && r.issue)
-      .slice(0, 5)
       .map((r) => {
         const it = r.issue as unknown as {
           identifier?: string;
@@ -159,5 +163,10 @@ export const getIssuesTool = defineTool({
     return { content: parts, structuredContent: structuredBatch };
   },
 });
+
+
+
+
+
 
 

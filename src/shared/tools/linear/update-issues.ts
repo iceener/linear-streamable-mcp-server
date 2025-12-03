@@ -7,7 +7,7 @@ import { toolsMetadata } from '../../../config/metadata.js';
 import { config } from '../../../config/env.js';
 import { UpdateIssuesOutputSchema } from '../../../schemas/outputs.js';
 import { getLinearClient } from '../../../services/linear/client.js';
-import { makeConcurrencyGate } from '../../../utils/limits.js';
+import { makeConcurrencyGate, withRetry, delay } from '../../../utils/limits.js';
 import { logger } from '../../../utils/logger.js';
 import { summarizeBatch } from '../../../utils/messages.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
@@ -139,10 +139,18 @@ export const updateIssuesTool = defineTool({
           throw new Error('Operation aborted');
         }
 
-        const payload =
-          args.parallel === true
-            ? await client.updateIssue(it.id, payloadInput)
-            : await gate(() => client.updateIssue(it.id, payloadInput));
+        // Add small delay between requests to avoid rate limits
+        if (i > 0) {
+          await delay(100);
+        }
+
+        const payload = await withRetry(
+          () =>
+            args.parallel === true
+              ? client.updateIssue(it.id, payloadInput)
+              : gate(() => client.updateIssue(it.id, payloadInput)),
+          { maxRetries: 3, baseDelayMs: 500 },
+        );
 
         // Handle incremental label updates
         if (it.addLabelIds?.length || it.removeLabelIds?.length) {
@@ -268,5 +276,10 @@ export const updateIssuesTool = defineTool({
     return { content: parts, structuredContent: structured };
   },
 });
+
+
+
+
+
 
 

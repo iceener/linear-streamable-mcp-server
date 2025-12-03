@@ -69,9 +69,13 @@ export function summarizeBatch(params: {
 export function previewLinesFromItems(
   items: Array<Record<string, unknown>>,
   build: (item: Record<string, unknown>) => string,
-  limit: number = 5,
 ): string[] {
-  return items.slice(0, limit).map((it) => build(it));
+  return items.map((it) => build(it));
 }
+
+
+
+
+
 
 
