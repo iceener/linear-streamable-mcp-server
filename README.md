@@ -144,7 +144,7 @@ PROVIDER_CLIENT_SECRET=your_client_secret
 OAUTH_SCOPES=read write
 OAUTH_REDIRECT_URI=alice://oauth/callback
 OAUTH_REDIRECT_ALLOWLIST=alice://oauth/callback,http://127.0.0.1:3001/oauth/callback
-```
+   ```
 
 ```bash
 bun dev
