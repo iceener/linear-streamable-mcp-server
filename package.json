@@ -18,7 +18,10 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run tests/integration/live-api.test.ts",
     "test:client": "bun run scripts/test-client.ts"
   },
   "keywords": [
@@ -49,6 +52,7 @@
     "@types/uuid": "^10.0.0",
     "bun-types": "latest",
     "typescript": "^5.9.2",
+    "vitest": "^3.2.4",
     "wrangler": "^3.94.0"
   },
   "engines": {

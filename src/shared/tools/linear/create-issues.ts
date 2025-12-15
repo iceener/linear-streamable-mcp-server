@@ -10,26 +10,52 @@ import { getLinearClient } from '../../../services/linear/client.js';
 import { makeConcurrencyGate, withRetry, delay } from '../../../utils/limits.js';
 import { logger } from '../../../utils/logger.js';
 import { summarizeBatch } from '../../../utils/messages.js';
+import { resolveAssignee } from '../../../utils/user-resolver.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
 import { createTeamSettingsCache, validateEstimate, validatePriority } from './shared/index.js';
 
 const IssueCreateItem = z.object({
-  teamId: z.string(),
-  title: z.string(),
-  description: z.string().optional(),
-  stateId: z.string().optional(),
-  labelIds: z.array(z.string()).optional(),
-  assigneeId: z.string().optional(),
-  projectId: z.string().optional(),
-  priority: z.number().optional(),
-  estimate: z.number().optional(),
-  dueDate: z.string().optional(),
-  parentId: z.string().optional(),
+  teamId: z.string().describe('Team UUID. Required.'),
+  title: z.string().describe('Issue title. Required.'),
+  description: z.string().optional().describe('Markdown description.'),
+  stateId: z
+    .string()
+    .optional()
+    .describe('Workflow state UUID. Get from workspace_metadata.workflowStatesByTeam.'),
+  labelIds: z.array(z.string()).optional().describe('Label UUIDs to attach.'),
+  assigneeId: z
+    .string()
+    .optional()
+    .describe('User UUID. If omitted, defaults to current viewer. Use assigneeName or assigneeEmail for name-based lookup.'),
+  assigneeName: z
+    .string()
+    .optional()
+    .describe('User name to assign (fuzzy match). Resolved to assigneeId automatically. Example: "John" matches "John Smith".'),
+  assigneeEmail: z
+    .string()
+    .optional()
+    .describe('User email to assign (exact match, case-insensitive). Resolved to assigneeId automatically.'),
+  projectId: z.string().optional().describe('Project UUID to associate.'),
+  priority: z
+    .number()
+    .int()
+    .min(0)
+    .max(4)
+    .optional()
+    .describe('Priority: 0=none, 1=urgent, 2=high, 3=medium, 4=low.'),
+  estimate: z.number().optional().describe('Story points / estimate value.'),
+  allowZeroEstimate: z
+    .boolean()
+    .optional()
+    .describe('If true and estimate=0, sends 0. Otherwise zero is omitted to avoid team validation errors.'),
+  dueDate: z.string().optional().describe('Due date in ISO format (YYYY-MM-DD).'),
+  parentId: z.string().optional().describe('Parent issue UUID for sub-issues.'),
 });
 
 const InputSchema = z.object({
-  items: z.array(IssueCreateItem).min(1).max(50),
-  parallel: z.boolean().optional(),
+  items: z.array(IssueCreateItem).min(1).max(50).describe('Issues to create.'),
+  parallel: z.boolean().optional().describe('Run in parallel. Default: sequential.'),
+  dry_run: z.boolean().optional().describe('If true, validate but do not create.'),
 });
 
 export const createIssuesTool = defineTool({
@@ -43,6 +69,30 @@ export const createIssuesTool = defineTool({
   },
 
   handler: async (args, context: ToolContext): Promise<ToolResult> => {
+    // Handle dry_run mode
+    if (args.dry_run) {
+      const validated = args.items.map((it, index) => ({
+        index,
+        ok: true,
+        title: it.title,
+        teamId: it.teamId,
+        validated: true,
+      }));
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Dry run: ${args.items.length} issue(s) validated successfully. No changes made.`,
+          },
+        ],
+        structuredContent: {
+          results: validated,
+          summary: { ok: args.items.length, failed: 0 },
+          dry_run: true,
+        },
+      };
+    }
+
     const client = await getLinearClient(context);
     const gate = makeConcurrencyGate(config.CONCURRENCY_LIMIT);
     const { items } = args;
@@ -77,10 +127,34 @@ export const createIssuesTool = defineTool({
           payloadInput.labelIds = it.labelIds;
         }
 
-        if (typeof it.assigneeId === 'string' && it.assigneeId) {
-          payloadInput.assigneeId = it.assigneeId;
+        // Resolve assignee from ID, name, or email
+        const assigneeResult = await resolveAssignee(client, {
+          assigneeId: it.assigneeId,
+          assigneeName: it.assigneeName,
+          assigneeEmail: it.assigneeEmail,
+        });
+
+        if (!assigneeResult.success && assigneeResult.error) {
+          // User resolution failed - report error but continue batch
+          results.push({
+            input: { title: it.title, teamId: it.teamId, assigneeName: it.assigneeName, assigneeEmail: it.assigneeEmail },
+            success: false,
+            error: {
+              code: assigneeResult.error.code,
+              message: assigneeResult.error.message,
+              suggestions: assigneeResult.error.suggestions,
+            },
+            // Legacy
+            index: i,
+            ok: false,
+          });
+          continue;
+        }
+
+        if (assigneeResult.user?.id) {
+          payloadInput.assigneeId = assigneeResult.user.id;
         } else {
-          // Default to current user
+          // Default to current user when no assignee specified
           try {
             const me = await client.viewer;
             const meId = (me as unknown as { id?: string })?.id;
@@ -106,7 +180,7 @@ export const createIssuesTool = defineTool({
           it.teamId,
           teamAllowZeroCache,
           client,
-          undefined,
+          it.allowZeroEstimate,
         );
         if (estimate !== undefined) {
           payloadInput.estimate = estimate;
@@ -151,11 +225,19 @@ export const createIssuesTool = defineTool({
           { maxRetries: 3, baseDelayMs: 500 },
         );
 
+        const issue = await payload.issue;
+        const issueUrl = (issue as unknown as { url?: string })?.url;
+
         results.push({
+          // Echo input for context
+          input: { title: it.title, teamId: it.teamId, assigneeName: it.assigneeName, assigneeEmail: it.assigneeEmail },
+          success: payload.success ?? true,
+          id: (issue as unknown as { id?: string })?.id,
+          identifier: (issue as unknown as { identifier?: string })?.identifier,
+          url: issueUrl,
+          // Legacy
           index: i,
           ok: payload.success ?? true,
-          id: (payload.issue as unknown as { id?: string })?.id,
-          identifier: (payload.issue as unknown as { identifier?: string })?.identifier,
         });
       } catch (error) {
         await logger.error('create_issues', {
@@ -164,20 +246,53 @@ export const createIssuesTool = defineTool({
           error: (error as Error).message,
         });
         results.push({
+          // Echo input for context
+          input: { title: it.title, teamId: it.teamId, assigneeName: it.assigneeName, assigneeEmail: it.assigneeEmail },
+          success: false,
+          error: {
+            code: 'LINEAR_CREATE_ERROR',
+            message: (error as Error).message,
+            suggestions: [
+              "Verify teamId with workspace_metadata.",
+              "Check that stateId exists in workflowStatesByTeam.",
+              "Use list_users to find valid assigneeId.",
+            ],
+            retryable: false,
+          },
+          // Legacy
           index: i,
           ok: false,
-          error: (error as Error).message,
-          code: 'LINEAR_CREATE_ERROR',
         });
       }
     }
 
+    const succeeded = results.filter((r) => r.success).length;
+    const failed = results.filter((r) => !r.success).length;
+
     const summary = {
-      ok: results.filter((r) => r.ok).length,
-      failed: results.filter((r) => !r.ok).length,
+      total: items.length,
+      succeeded,
+      failed,
+      // Legacy
+      ok: succeeded,
     };
 
-    const structured = CreateIssuesOutputSchema.parse({ results, summary });
+    // Build meta with next steps
+    const metaNextSteps: string[] = [
+      'Use list_issues or get_issues to verify created issues.',
+      'Use update_issues to modify state, assignee, or labels.',
+    ];
+    if (failed > 0) {
+      metaNextSteps.push("Check error.suggestions for recovery hints.");
+      metaNextSteps.push("Use workspace_metadata to verify IDs.");
+    }
+
+    const meta = {
+      nextSteps: metaNextSteps,
+      relatedTools: ['list_issues', 'get_issues', 'update_issues', 'add_comments'],
+    };
+
+    const structured = CreateIssuesOutputSchema.parse({ results, summary, meta });
 
     const okIds = results
       .filter((r) => r.ok)

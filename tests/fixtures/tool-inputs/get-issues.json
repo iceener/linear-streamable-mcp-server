@@ -1,0 +1,37 @@
+{
+  "valid": [
+    {
+      "name": "single_id",
+      "input": { "ids": ["issue-001"] },
+      "description": "Fetch single issue by UUID"
+    },
+    {
+      "name": "multiple_ids",
+      "input": { "ids": ["issue-001", "issue-002", "issue-003"] },
+      "description": "Fetch multiple issues by UUID"
+    },
+    {
+      "name": "by_identifier",
+      "input": { "ids": ["ENG-123"] },
+      "description": "Fetch by short identifier"
+    },
+    {
+      "name": "mixed_ids",
+      "input": { "ids": ["issue-001", "ENG-124", "issue-003"] },
+      "description": "Mix of UUIDs and identifiers"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "empty_ids",
+      "input": { "ids": [] },
+      "expectedError": "Array must contain at least 1 element"
+    },
+    {
+      "name": "missing_ids",
+      "input": {},
+      "expectedError": "Required"
+    }
+  ]
+}
+

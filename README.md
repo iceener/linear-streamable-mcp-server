@@ -488,6 +488,60 @@ bun start         # Run production
 
 ---
 
+## Testing
+
+The project uses a two-layer testing strategy:
+
+### Unit Tests (Mock)
+
+Fast tests using mocked Linear API responses. Tests all logic, validation, and edge cases without network calls.
+
+```bash
+bun test              # Run all unit tests (~4 seconds)
+bun run test:watch    # Watch mode
+bun run test:coverage # With coverage report
+```
+
+### Integration Tests (Live API)
+
+Real API tests that verify the actual Linear connection works. Creates issues in a "Tests" team and cleans up after.
+
+**Setup:**
+
+1. Create a team named "Tests" in your Linear workspace
+2. Add your Linear API key to `.env`:
+   ```env
+   PROVIDER_API_KEY=lin_api_xxxx
+   ```
+
+**Run:**
+
+```bash
+bun run test:integration  # ~45 seconds
+```
+
+**What it tests:**
+
+| Category | Tests | Purpose |
+|----------|-------|---------|
+| CRUD | 5 | Create, Read, Update, List operations |
+| Filtering | 3 | Priority, title search, workflow state filters |
+| Pagination | 2 | Limit and cursor behavior |
+| Errors | 3 | Non-existent issues, invalid filters |
+| Rate Limiting | 2 | Rapid requests, batch operations |
+
+### Testing Strategy
+
+| Layer | Speed | Purpose |
+|-------|-------|---------|
+| **Unit/Mock** | ⚡️ Fast | Logic correctness, validation, edge cases |
+| **Integration** | 🐢 Slow | API contract, real data mapping |
+| **TypeScript** | 🛡️ Build | SDK type alignment |
+
+Run unit tests on every change. Run integration tests before releases or after SDK upgrades.
+
+---
+
 ## Architecture
 
 ```

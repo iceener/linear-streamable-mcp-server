@@ -37,8 +37,24 @@ export const listCyclesTool = defineTool({
       ((team as unknown as { cyclesEnabled?: boolean } | null)?.cyclesEnabled ?? false) === true;
     
     if (!cyclesEnabled) {
-      const msg = `Cycles are disabled for team ${args.teamId}. Use 'workspace_metadata' to inspect teams and avoid cycle tools for teams with cyclesEnabled=false.`;
-      return { isError: true, content: [{ type: 'text', text: msg }] };
+      const msg =
+        `Cycles are disabled for team ${args.teamId}.\n\n` +
+        `Alternatives for organizing work:\n` +
+        `- Use list_projects to manage work with milestones and project phases\n` +
+        `- Use labels to group issues by sprint/phase (e.g., "Sprint 23", "Q1-2024")\n` +
+        `- Use dueDate field on issues to track timelines\n\n` +
+        `Next steps: Check workspace_metadata with include=["teams"] to find teams with cyclesEnabled=true, ` +
+        `or use list_projects for milestone-based planning.`;
+      return {
+        isError: true,
+        content: [{ type: 'text', text: msg }],
+        structuredContent: {
+          error: 'CYCLES_DISABLED',
+          teamId: args.teamId,
+          alternatives: ['list_projects', 'labels', 'dueDate'],
+          hint: 'Use workspace_metadata to find teams with cycles enabled.',
+        },
+      };
     }
     
     const first = args.limit ?? 20;
@@ -68,10 +84,43 @@ export const listCyclesTool = defineTool({
       status: (c as unknown as { status?: string })?.status ?? undefined,
     }));
     
+    const hasMore = !!conn.pageInfo?.endCursor;
+    const nextCursor = conn.pageInfo?.endCursor ?? undefined;
+
+    // Build query echo
+    const query = {
+      teamId: args.teamId,
+      includeArchived: args.includeArchived,
+      orderBy: args.orderBy,
+      limit: first,
+    };
+
+    // Build pagination
+    const pagination = {
+      hasMore,
+      nextCursor,
+      itemsReturned: items.length,
+      limit: first,
+    };
+
+    // Build meta
+    const meta = {
+      nextSteps: [
+        ...(hasMore ? [`Call again with cursor="${nextCursor}" for more.`] : []),
+        'Use cycle number/name to coordinate planning.',
+        'Use list_issues with team filter to gather work for cycles.',
+      ],
+      relatedTools: ['list_issues', 'update_issues'],
+    };
+
     const structured = ListCyclesOutputSchema.parse({
+      query,
       items,
+      pagination,
+      meta,
+      // Legacy
       cursor: args.cursor,
-      nextCursor: conn.pageInfo?.endCursor ?? undefined,
+      nextCursor,
       limit: first,
     });
     
@@ -91,11 +140,9 @@ export const listCyclesTool = defineTool({
       subject: 'Cycles',
       count: items.length,
       limit: first,
-      nextCursor: structured.nextCursor,
+      nextCursor,
       previewLines: preview,
-      nextSteps: [
-        'Use cycle number/name to coordinate planning. Filter list_issues by team and state to gather work for cycles.',
-      ],
+      nextSteps: meta.nextSteps,
     });
     
     const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: message }];
@@ -107,6 +154,16 @@ export const listCyclesTool = defineTool({
     return { content: parts, structuredContent: structured };
   },
 });
+
+
+
+
+
+
+
+
+
+
 
 
 

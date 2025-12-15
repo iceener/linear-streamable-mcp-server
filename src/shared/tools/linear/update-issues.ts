@@ -10,6 +10,7 @@ import { getLinearClient } from '../../../services/linear/client.js';
 import { makeConcurrencyGate, withRetry, delay } from '../../../utils/limits.js';
 import { logger } from '../../../utils/logger.js';
 import { summarizeBatch } from '../../../utils/messages.js';
+import { resolveAssignee } from '../../../utils/user-resolver.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
 import {
   createTeamSettingsCache,
@@ -21,25 +22,47 @@ import {
 } from './shared/index.js';
 
 const IssueUpdateItem = z.object({
-  id: z.string(),
-  title: z.string().optional(),
-  description: z.string().optional(),
-  stateId: z.string().optional(),
-  labelIds: z.array(z.string()).optional(),
-  addLabelIds: z.array(z.string()).optional(),
-  removeLabelIds: z.array(z.string()).optional(),
-  assigneeId: z.string().optional(),
-  projectId: z.string().optional(),
-  priority: z.number().optional(),
-  estimate: z.number().optional(),
-  dueDate: z.string().optional(),
-  parentId: z.string().optional(),
-  archived: z.boolean().optional(),
+  id: z.string().describe('Issue UUID or identifier (e.g. ENG-123). Required.'),
+  title: z.string().optional().describe('New title.'),
+  description: z.string().optional().describe('New markdown description.'),
+  stateId: z
+    .string()
+    .optional()
+    .describe('New workflow state UUID. Get from workspace_metadata.workflowStatesByTeam.'),
+  labelIds: z.array(z.string()).optional().describe('Replace all labels with these UUIDs.'),
+  addLabelIds: z.array(z.string()).optional().describe('Add these label UUIDs (incremental).'),
+  removeLabelIds: z.array(z.string()).optional().describe('Remove these label UUIDs (incremental).'),
+  assigneeId: z.string().optional().describe('New assignee user UUID. Use assigneeName or assigneeEmail for name-based lookup.'),
+  assigneeName: z
+    .string()
+    .optional()
+    .describe('User name to assign (fuzzy match). Resolved to assigneeId automatically. Example: "John" matches "John Smith".'),
+  assigneeEmail: z
+    .string()
+    .optional()
+    .describe('User email to assign (exact match, case-insensitive). Resolved to assigneeId automatically.'),
+  projectId: z.string().optional().describe('New project UUID.'),
+  priority: z
+    .number()
+    .int()
+    .min(0)
+    .max(4)
+    .optional()
+    .describe('Priority: 0=none, 1=urgent, 2=high, 3=medium, 4=low.'),
+  estimate: z.number().optional().describe('New estimate / story points.'),
+  allowZeroEstimate: z
+    .boolean()
+    .optional()
+    .describe('If true and estimate=0, sends 0. Otherwise zero is omitted.'),
+  dueDate: z.string().optional().describe('New due date (YYYY-MM-DD) or empty string to clear.'),
+  parentId: z.string().optional().describe('New parent issue UUID.'),
+  archived: z.boolean().optional().describe('Set true to archive, false to unarchive.'),
 });
 
 const InputSchema = z.object({
-  items: z.array(IssueUpdateItem).min(1).max(50),
-  parallel: z.boolean().optional(),
+  items: z.array(IssueUpdateItem).min(1).max(50).describe('Issues to update. Batch up to 50.'),
+  parallel: z.boolean().optional().describe('Run in parallel. Default: sequential.'),
+  dry_run: z.boolean().optional().describe('If true, validate but do not update.'),
 });
 
 export const updateIssuesTool = defineTool({
@@ -53,6 +76,29 @@ export const updateIssuesTool = defineTool({
   },
 
   handler: async (args, context: ToolContext): Promise<ToolResult> => {
+    // Handle dry_run mode
+    if (args.dry_run) {
+      const validated = args.items.map((it, index) => ({
+        index,
+        ok: true,
+        id: it.id,
+        validated: true,
+      }));
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Dry run: ${args.items.length} update(s) validated successfully. No changes made.`,
+          },
+        ],
+        structuredContent: {
+          results: validated,
+          summary: { ok: args.items.length, failed: 0 },
+          dry_run: true,
+        },
+      };
+    }
+
     const client = await getLinearClient(context);
     const gate = makeConcurrencyGate(config.CONCURRENCY_LIMIT);
     const { items } = args;
@@ -92,8 +138,28 @@ export const updateIssuesTool = defineTool({
           payloadInput.labelIds = it.labelIds;
         }
 
-        if (typeof it.assigneeId === 'string' && it.assigneeId) {
-          payloadInput.assigneeId = it.assigneeId;
+        // Resolve assignee from ID, name, or email
+        if (it.assigneeId || it.assigneeName || it.assigneeEmail) {
+          const assigneeResult = await resolveAssignee(client, {
+            assigneeId: it.assigneeId,
+            assigneeName: it.assigneeName,
+            assigneeEmail: it.assigneeEmail,
+          });
+
+          if (!assigneeResult.success && assigneeResult.error) {
+            // User resolution failed - report error but continue batch
+            results.push({
+              index: i,
+              ok: false,
+              error: assigneeResult.error.message,
+              code: assigneeResult.error.code,
+            });
+            continue;
+          }
+
+          if (assigneeResult.user?.id) {
+            payloadInput.assigneeId = assigneeResult.user.id;
+          }
         }
 
         if (typeof it.projectId === 'string' && it.projectId) {
@@ -120,7 +186,7 @@ export const updateIssuesTool = defineTool({
             teamId,
             teamAllowZeroCache,
             client,
-            undefined,
+            it.allowZeroEstimate,
           );
           if (estimate !== undefined) {
             payloadInput.estimate = estimate;
@@ -191,7 +257,25 @@ export const updateIssuesTool = defineTool({
           }
         }
 
-        results.push({ index: i, ok: payload.success ?? true, id: it.id });
+        // Build input echo (only include provided fields)
+        const inputEcho: Record<string, unknown> = { id: it.id };
+        if (it.title) inputEcho.title = it.title;
+        if (it.stateId) inputEcho.stateId = it.stateId;
+        if (it.assigneeId) inputEcho.assigneeId = it.assigneeId;
+        if (it.assigneeName) inputEcho.assigneeName = it.assigneeName;
+        if (it.assigneeEmail) inputEcho.assigneeEmail = it.assigneeEmail;
+        if (it.projectId) inputEcho.projectId = it.projectId;
+        if (it.addLabelIds) inputEcho.addLabelIds = it.addLabelIds;
+        if (it.removeLabelIds) inputEcho.removeLabelIds = it.removeLabelIds;
+
+        results.push({
+          input: inputEcho,
+          success: payload.success ?? true,
+          id: it.id,
+          // Legacy
+          index: i,
+          ok: payload.success ?? true,
+        });
 
         // Capture AFTER snapshot using shared utility
         const afterSnapshot = await gate(() => captureIssueSnapshot(client, it.id));
@@ -221,21 +305,51 @@ export const updateIssuesTool = defineTool({
           error: (error as Error).message,
         });
         results.push({
+          input: { id: it.id },
+          success: false,
+          id: it.id,
+          error: {
+            code: 'LINEAR_UPDATE_ERROR',
+            message: (error as Error).message,
+            suggestions: [
+              "Verify the issue ID exists with list_issues or get_issues.",
+              "Check that stateId exists in workflowStatesByTeam.",
+              "Use list_users to find valid assigneeId.",
+            ],
+            retryable: false,
+          },
+          // Legacy
           index: i,
           ok: false,
-          id: it.id,
-          error: (error as Error).message,
-          code: 'LINEAR_UPDATE_ERROR',
         });
       }
     }
 
+    const succeeded = results.filter((r) => r.success).length;
+    const failed = results.filter((r) => !r.success).length;
+
     const summary = {
-      ok: results.filter((r) => r.ok).length,
-      failed: results.filter((r) => !r.ok).length,
+      total: items.length,
+      succeeded,
+      failed,
+      // Legacy
+      ok: succeeded,
     };
 
-    const structured = UpdateIssuesOutputSchema.parse({ results, summary });
+    // Build meta with next steps
+    const metaNextSteps: string[] = [
+      'Use list_issues or get_issues to verify changes.',
+    ];
+    if (failed > 0) {
+      metaNextSteps.push("Check error.suggestions for recovery hints.");
+    }
+
+    const meta = {
+      nextSteps: metaNextSteps,
+      relatedTools: ['list_issues', 'get_issues', 'add_comments'],
+    };
+
+    const structured = UpdateIssuesOutputSchema.parse({ results, summary, meta });
 
     const okIds = results
       .filter((r) => r.ok)

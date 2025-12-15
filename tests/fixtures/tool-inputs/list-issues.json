@@ -1,0 +1,110 @@
+{
+  "valid": [
+    {
+      "name": "default_no_args",
+      "input": {},
+      "description": "Default behavior with no filters"
+    },
+    {
+      "name": "with_team_filter",
+      "input": { "teamId": "team-eng" },
+      "description": "Filter issues by team ID"
+    },
+    {
+      "name": "with_project_filter",
+      "input": { "projectId": "project-001" },
+      "description": "Filter issues by project ID"
+    },
+    {
+      "name": "with_keyword_search",
+      "input": { "q": "authentication bug" },
+      "description": "Free-text search splits into keywords"
+    },
+    {
+      "name": "with_explicit_keywords",
+      "input": { "keywords": ["fix", "auth"] },
+      "description": "Explicit keyword array for title matching"
+    },
+    {
+      "name": "with_state_filter",
+      "input": { "filter": { "state": { "type": { "eq": "started" } } } },
+      "description": "Filter by state type (in progress)"
+    },
+    {
+      "name": "with_state_name_filter",
+      "input": { "filter": { "state": { "name": { "eq": "In Progress" } } } },
+      "description": "Filter by exact state name"
+    },
+    {
+      "name": "exclude_completed",
+      "input": { "filter": { "state": { "type": { "neq": "completed" } } } },
+      "description": "Exclude completed issues (active/open)"
+    },
+    {
+      "name": "with_assignee_filter",
+      "input": { "filter": { "assignee": { "id": { "eq": "user-001" } } } },
+      "description": "Filter by assignee ID"
+    },
+    {
+      "name": "with_label_filter",
+      "input": { "filter": { "labels": { "name": { "in": ["Bug", "Feature"] } } } },
+      "description": "Filter by label names"
+    },
+    {
+      "name": "with_pagination",
+      "input": { "limit": 10, "cursor": "cursor-abc" },
+      "description": "Paginated request with cursor"
+    },
+    {
+      "name": "order_by_created",
+      "input": { "orderBy": "createdAt" },
+      "description": "Order by creation date"
+    },
+    {
+      "name": "detail_minimal",
+      "input": { "detail": "minimal" },
+      "description": "Return minimal fields (id, title, state)"
+    },
+    {
+      "name": "detail_full",
+      "input": { "detail": "full" },
+      "description": "Return all fields including labels and description"
+    },
+    {
+      "name": "include_archived",
+      "input": { "includeArchived": true },
+      "description": "Include archived issues"
+    },
+    {
+      "name": "complex_filter",
+      "input": {
+        "teamId": "team-eng",
+        "filter": {
+          "state": { "type": { "eq": "started" } },
+          "priority": { "lte": 2 }
+        },
+        "orderBy": "updatedAt",
+        "limit": 20
+      },
+      "description": "Complex filter combining multiple criteria"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "limit_too_high",
+      "input": { "limit": 500 },
+      "expectedError": "Number must be less than or equal to 100"
+    },
+    {
+      "name": "limit_zero",
+      "input": { "limit": 0 },
+      "expectedError": "Number must be greater than or equal to 1"
+    },
+    {
+      "name": "invalid_order_by",
+      "input": { "orderBy": "invalid" },
+      "expectedError": "Invalid enum value"
+    }
+  ]
+}
+

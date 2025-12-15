@@ -136,12 +136,19 @@ export function normalizeIssueFilter(
     }
     if (key === 'identifier') {
       const ok = setFromIdentifier(value);
-      // Skip adding unknown field; if parse failed, we intentionally do not forward
-      // unsupported 'identifier' to avoid GraphQL errors.
       if (ok) {
         continue;
       }
-      // If parsing failed, ignore this key entirely.
+      // If parsing failed, try to use it as-is for id lookup
+      // Linear accepts issue IDs in multiple formats
+      const idValue =
+        typeof value === 'string'
+          ? value
+          : (value as { eq?: string })?.eq ?? undefined;
+      if (idValue) {
+        // Could be a UUID - try id filter instead
+        setNested(result, ['id'], idValue);
+      }
       continue;
     }
     if (key.includes('.')) {
@@ -156,6 +163,16 @@ export function normalizeIssueFilter(
   }
   return result;
 }
+
+
+
+
+
+
+
+
+
+
 
 
 

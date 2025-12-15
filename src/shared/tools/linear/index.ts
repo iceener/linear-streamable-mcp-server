@@ -15,7 +15,7 @@ export { listTeamsTool } from './list-teams.js';
 export { listUsersTool } from './list-users.js';
 
 // Comments
-export { listCommentsTool, addCommentsTool } from './comments.js';
+export { listCommentsTool, addCommentsTool, updateCommentsTool } from './comments.js';
 
 // Cycles
 export { listCyclesTool } from './cycles.js';

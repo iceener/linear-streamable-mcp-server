@@ -38,10 +38,34 @@ export const listTeamsTool = defineTool({
     const items = connection.nodes.map(mapTeamNodeToListItem);
     const pageInfo = connection.pageInfo;
 
+    const hasMore = pageInfo.hasNextPage;
+    const nextCursor = hasMore ? pageInfo.endCursor : undefined;
+
+    // Build pagination
+    const pagination = {
+      hasMore,
+      nextCursor,
+      itemsReturned: items.length,
+      limit,
+    };
+
+    // Build meta
+    const meta = {
+      nextSteps: [
+        ...(hasMore ? [`Call again with cursor="${nextCursor}" for more.`] : []),
+        'Use team id as teamId in list_issues or create_issues.',
+        'Use workspace_metadata with teamIds to get workflow states and labels.',
+      ],
+      relatedTools: ['workspace_metadata', 'list_issues', 'create_issues'],
+    };
+
     const structured = ListTeamsOutputSchema.parse({
       items,
+      pagination,
+      meta,
+      // Legacy
       cursor: args.cursor,
-      nextCursor: pageInfo.hasNextPage ? pageInfo.endCursor : undefined,
+      nextCursor,
       limit,
     });
 
@@ -58,9 +82,9 @@ export const listTeamsTool = defineTool({
       subject: 'Teams',
       count: items.length,
       limit,
-      nextCursor: structured.nextCursor,
+      nextCursor,
       previewLines: preview,
-      nextSteps: ['Use team id as teamId in list_issues, create_issues, or workspace_metadata.'],
+      nextSteps: meta.nextSteps,
     });
 
     return {

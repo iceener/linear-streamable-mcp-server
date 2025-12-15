@@ -13,6 +13,24 @@ import { sharedLogger as logger } from '../../shared/utils/logger.js';
 const clientCache = new Map<string, LinearClient>();
 
 /**
+ * Generate cache key from token.
+ * Uses full token - it's already in memory and Map is internal.
+ */
+function tokenToCacheKey(prefix: string, token: string): string {
+  return `${prefix}:${token}`;
+}
+
+/**
+ * Helper to create client with correct auth method.
+ * Detects if token is an API key (starts with lin_) or OAuth token.
+ */
+function createClient(token: string): LinearClient {
+  return token.startsWith('lin_') 
+    ? new LinearClient({ apiKey: token })
+    : new LinearClient({ accessToken: token });
+}
+
+/**
  * Get a Linear API client for the authenticated user.
  * Uses the provider token from the tool context or falls back to env vars.
  */
@@ -21,13 +39,13 @@ export async function getLinearClient(context?: ToolContext): Promise<LinearClie
   const providerToken = context?.providerToken || context?.provider?.accessToken;
   
   if (providerToken) {
-    const cacheKey = `provider:${providerToken.slice(0, 16)}`;
+    const cacheKey = tokenToCacheKey('provider', providerToken);
     const cached = clientCache.get(cacheKey);
     if (cached) {
       return cached;
     }
     
-    const client = new LinearClient({ accessToken: providerToken });
+    const client = createClient(providerToken);
     clientCache.set(cacheKey, client);
     
     logger.debug('linear_client', {
@@ -50,13 +68,13 @@ export async function getLinearClient(context?: ToolContext): Promise<LinearClie
         const record = await store.getByRsAccess(rsToken);
         
         if (record?.provider?.access_token) {
-          const cacheKey = `rs:${rsToken.slice(0, 16)}`;
+          const cacheKey = tokenToCacheKey('rs', rsToken);
           const cached = clientCache.get(cacheKey);
           if (cached) {
             return cached;
           }
           
-          const client = new LinearClient({ accessToken: record.provider.access_token });
+          const client = createClient(record.provider.access_token);
           clientCache.set(cacheKey, client);
           
           logger.debug('linear_client', {
@@ -74,13 +92,13 @@ export async function getLinearClient(context?: ToolContext): Promise<LinearClie
       }
       
       // Assume bearer is a Linear token directly (API key mode)
-      const cacheKey = `bearer:${rsToken.slice(0, 16)}`;
+      const cacheKey = tokenToCacheKey('bearer', rsToken);
       const cached = clientCache.get(cacheKey);
       if (cached) {
         return cached;
       }
       
-      const client = new LinearClient({ accessToken: rsToken });
+      const client = createClient(rsToken);
       clientCache.set(cacheKey, client);
       
       logger.debug('linear_client', {
@@ -102,13 +120,13 @@ export async function getLinearClient(context?: ToolContext): Promise<LinearClie
     );
   }
 
-  const cacheKey = `env:${envAccessToken.slice(0, 8)}`;
+  const cacheKey = tokenToCacheKey('env', envAccessToken);
   const cached = clientCache.get(cacheKey);
   if (cached) {
     return cached;
   }
 
-  const client = new LinearClient({ accessToken: envAccessToken });
+  const client = createClient(envAccessToken);
   clientCache.set(cacheKey, client);
 
   logger.debug('linear_client', {
@@ -127,13 +145,13 @@ export function getLinearClientSync(context?: ToolContext): LinearClient {
   const providerToken = context?.providerToken || context?.provider?.accessToken;
   
   if (providerToken) {
-    const cacheKey = `provider:${providerToken.slice(0, 16)}`;
+    const cacheKey = tokenToCacheKey('provider', providerToken);
     const cached = clientCache.get(cacheKey);
     if (cached) {
       return cached;
     }
     
-    const client = new LinearClient({ accessToken: providerToken });
+    const client = createClient(providerToken);
     clientCache.set(cacheKey, client);
     return client;
   }
@@ -145,13 +163,13 @@ export function getLinearClientSync(context?: ToolContext): LinearClient {
     const token = bearerMatch?.[1];
     
     if (token) {
-      const cacheKey = `bearer:${token.slice(0, 16)}`;
+      const cacheKey = tokenToCacheKey('bearer', token);
       const cached = clientCache.get(cacheKey);
       if (cached) {
         return cached;
       }
       
-      const client = new LinearClient({ accessToken: token });
+      const client = createClient(token);
       clientCache.set(cacheKey, client);
       return client;
     }
@@ -166,13 +184,13 @@ export function getLinearClientSync(context?: ToolContext): LinearClient {
     );
   }
 
-  const cacheKey = `env:${envAccessToken.slice(0, 8)}`;
+  const cacheKey = tokenToCacheKey('env', envAccessToken);
   const cached = clientCache.get(cacheKey);
   if (cached) {
     return cached;
   }
 
-  const client = new LinearClient({ accessToken: envAccessToken });
+  const client = createClient(envAccessToken);
   clientCache.set(cacheKey, client);
 
   return client;

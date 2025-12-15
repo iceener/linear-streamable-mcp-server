@@ -15,17 +15,45 @@ import {
   formatIssuePreviewLine,
   previewLinesFromItems,
   type IssueListItem,
+  type DetailLevel,
 } from './shared/index.js';
 
 const InputSchema = z.object({
-  limit: z.number().int().min(1).max(100).optional(),
-  cursor: z.string().optional(),
-  filter: z.record(z.any()).optional(),
-  includeArchived: z.boolean().optional(),
-  orderBy: z.enum(['updatedAt', 'createdAt']).optional(),
-  q: z.string().optional(),
-  keywords: z.array(z.string()).optional(),
-  fullDescriptions: z.boolean().optional(),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .optional()
+    .describe('Max results. Default: 20.'),
+  cursor: z.string().optional().describe('Pagination cursor from previous response.'),
+  filter: z
+    .record(z.any())
+    .optional()
+    .describe(
+      'GraphQL-style IssueFilter. Structure: { field: { comparator: value } }. ' +
+        "Comparators: eq, neq, lt, lte, gt, gte, in, nin, containsIgnoreCase. " +
+        "Examples: { state: { type: { eq: 'started' } } } for in-progress, " +
+        "{ state: { type: { neq: 'completed' } } } for open issues, " +
+        "{ project: { id: { eq: 'PROJECT_UUID' } } }.",
+    ),
+  includeArchived: z.boolean().optional().describe('Include archived issues. Default: false.'),
+  orderBy: z
+    .enum(['updatedAt', 'createdAt'])
+    .optional()
+    .describe("Sort order. Default: 'updatedAt'. Use filter.priority for priority-based filtering."),
+  detail: z
+    .enum(['minimal', 'standard', 'full'])
+    .optional()
+    .describe("Detail level: 'minimal' (id, title, state), 'standard' (+ priority, assignee, project, due), 'full' (+ labels, description). Default: 'standard'."),
+  q: z
+    .string()
+    .optional()
+    .describe('Free-text search. Splits into tokens, matches title case-insensitively.'),
+  keywords: z
+    .array(z.string())
+    .optional()
+    .describe('Explicit keywords for title search (OR logic).'),
 });
 
 export const listMyIssuesTool = defineTool({
@@ -158,43 +186,73 @@ export const listMyIssuesTool = defineTool({
       };
     });
 
+    const hasMore = !!conn.pageInfo?.endCursor;
+    const nextCursor = conn.pageInfo?.endCursor ?? undefined;
+
+    // Build query echo for LLM context
+    const query = {
+      filter: Object.keys(mergedFilter).length > 0 ? mergedFilter : undefined,
+      assignedToMe: true,
+      keywords: keywordTokens.length > 0 ? keywordTokens : undefined,
+      includeArchived: args.includeArchived,
+      orderBy: args.orderBy,
+      limit: first,
+    };
+
+    // Build pagination info
+    const pagination = {
+      hasMore,
+      nextCursor,
+      itemsReturned: items.length,
+      limit: first,
+    };
+
+    // Build meta with next steps
+    const metaNextSteps: string[] = [];
+    if (items.length > 0) {
+      metaNextSteps.push('Use get_issues with specific IDs for detailed info.');
+      metaNextSteps.push('Use update_issues to change state, assignee, or labels.');
+    } else {
+      metaNextSteps.push("Refine filters: try state.type 'started' or remove keyword filter.");
+      metaNextSteps.push('Use list_issues without assignedToMe to see all issues.');
+    }
+    if (hasMore) {
+      metaNextSteps.unshift(`Call again with cursor="${nextCursor}" to fetch more.`);
+    }
+
+    const meta = {
+      nextSteps: metaNextSteps,
+      hints: items.length === 0 ? ['No issues assigned to you match the current filters.'] : undefined,
+      relatedTools: ['get_issues', 'update_issues', 'add_comments', 'list_issues'],
+    };
+
     const structured = ListIssuesOutputSchema.parse({
+      query,
       items,
+      pagination,
+      meta,
+      // Legacy fields
       cursor: args.cursor,
-      nextCursor: conn.pageInfo?.endCursor ?? undefined,
+      nextCursor,
       limit: first,
     });
 
-    // Use shared formatting utilities
-    const preview = previewLinesFromItems(items, formatIssuePreviewLine);
-
-    const nextSteps: string[] = [];
-    if (items.length > 0) {
-      nextSteps.push(
-        'Use list_issues (by id or by number+team.key/team.id, limit=1) for details, or update_issues to change state/assignee.',
-      );
-    } else {
-      nextSteps.push(
-        "Refine filters: try state.type 'started' (alias: active), clear q/keywords or try different keywords.",
-      );
-    }
+    // Use shared formatting utilities with detail level
+    const detail: DetailLevel = args.detail ?? 'standard';
+    const preview = previewLinesFromItems(items, (i) => formatIssuePreviewLine(i, detail));
 
     const message = summarizeList({
       subject: 'My issues',
       count: items.length,
       limit: first,
-      nextCursor: structured.nextCursor,
+      nextCursor,
       previewLines: preview,
-      nextSteps,
+      nextSteps: metaNextSteps,
     });
 
-    // Use shared details formatting
+    // Use shared details formatting with detail level
     const details = items
-      .map((i) =>
-        formatIssueDetails(i, {
-          fullDescriptions: args.fullDescriptions,
-        }),
-      )
+      .map((i) => formatIssueDetails(i, { detail }))
       .join('\n');
 
     const full = details ? `${message}\n\n${details}` : message;

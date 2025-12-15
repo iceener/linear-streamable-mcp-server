@@ -1,0 +1,71 @@
+{
+  "valid": [
+    {
+      "name": "default_all_includes",
+      "input": {},
+      "description": "Default behavior includes profile, teams, workflow_states, labels, projects"
+    },
+    {
+      "name": "profile_only",
+      "input": { "include": ["profile"] },
+      "description": "Fetch only viewer profile"
+    },
+    {
+      "name": "teams_and_states",
+      "input": { "include": ["teams", "workflow_states"] },
+      "description": "Fetch teams with their workflow states"
+    },
+    {
+      "name": "filtered_by_team_ids",
+      "input": { "include": ["teams", "labels"], "teamIds": ["team-eng"] },
+      "description": "Filter to specific team by ID"
+    },
+    {
+      "name": "with_project_limit",
+      "input": { "include": ["projects"], "project_limit": 5 },
+      "description": "Limit number of projects returned"
+    },
+    {
+      "name": "with_label_limit",
+      "input": { "include": ["labels"], "label_limit": 10 },
+      "description": "Limit number of labels per team"
+    },
+    {
+      "name": "include_favorites",
+      "input": { "include": ["profile", "favorites"] },
+      "description": "Include user favorites"
+    },
+    {
+      "name": "full_bootstrap",
+      "input": {
+        "include": ["profile", "teams", "workflow_states", "labels", "projects", "favorites"],
+        "project_limit": 10,
+        "label_limit": 50
+      },
+      "description": "Full workspace bootstrap with all data"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "invalid_include_value",
+      "input": { "include": ["invalid_option"] },
+      "expectedError": "Invalid enum value"
+    },
+    {
+      "name": "project_limit_too_high",
+      "input": { "include": ["projects"], "project_limit": 999 },
+      "expectedError": "Number must be less than or equal to 100"
+    },
+    {
+      "name": "project_limit_zero",
+      "input": { "include": ["projects"], "project_limit": 0 },
+      "expectedError": "Number must be greater than or equal to 1"
+    },
+    {
+      "name": "label_limit_too_high",
+      "input": { "include": ["labels"], "label_limit": 500 },
+      "expectedError": "Number must be less than or equal to 200"
+    }
+  ]
+}
+

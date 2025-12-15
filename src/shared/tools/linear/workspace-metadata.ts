@@ -23,10 +23,33 @@ const InputSchema = z.object({
       ]),
     )
     .optional()
-    .describe('What to include in the response'),
-  teamIds: z.array(z.string()).optional().describe('Filter to specific teams'),
-  project_limit: z.number().int().min(1).max(100).optional(),
-  label_limit: z.number().int().min(1).max(200).optional(),
+    .describe(
+      "What to include. Defaults to ['profile','teams','workflow_states','labels','projects']. " +
+        "'profile' returns viewer (id, name, email, timezone). " +
+        "'teams' returns team list with cyclesEnabled flag. " +
+        "'workflow_states' returns workflowStatesByTeam[teamId] with state id/name/type. " +
+        "'labels' returns labelsByTeam[teamId]. " +
+        "'projects' returns project list. " +
+        "'favorites' returns user favorites.",
+    ),
+  teamIds: z
+    .array(z.string())
+    .optional()
+    .describe('Filter to specific team UUIDs. If omitted, fetches all teams.'),
+  project_limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .optional()
+    .describe('Max projects per team. Default: 10.'),
+  label_limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(200)
+    .optional()
+    .describe('Max labels per team. Default: 50.'),
 });
 
 type TeamLike = {
@@ -247,6 +270,61 @@ export const workspaceMetadataTool = defineTool({
       projectCount: projectsLocalCount,
     };
     result.summary = summary;
+
+    // Build quickLookup for easy access
+    const quickLookup: Record<string, unknown> = {};
+    if (result.viewer) {
+      quickLookup.viewerId = result.viewer.id;
+      quickLookup.viewerName = result.viewer.name;
+      quickLookup.viewerEmail = result.viewer.email;
+    }
+    if (teams.length > 0) {
+      quickLookup.teamIds = teams.map((t) => t.id);
+      quickLookup.teamByKey = Object.fromEntries(
+        teams.filter((t) => t.key).map((t) => [t.key, t.id]),
+      );
+      quickLookup.teamByName = Object.fromEntries(
+        teams.map((t) => [t.name, t.id]),
+      );
+    }
+    if (Object.keys(statesByTeamComputed).length > 0) {
+      // Flatten all states into a single lookup by name
+      const stateIdByName: Record<string, string> = {};
+      for (const states of Object.values(statesByTeamComputed)) {
+        for (const s of states) {
+          stateIdByName[s.name] = s.id;
+        }
+      }
+      quickLookup.stateIdByName = stateIdByName;
+    }
+    if (Object.keys(labelsByTeamComputed).length > 0) {
+      // Flatten all labels into a single lookup by name
+      const labelIdByName: Record<string, string> = {};
+      for (const labels of Object.values(labelsByTeamComputed)) {
+        for (const l of labels) {
+          labelIdByName[l.name] = l.id;
+        }
+      }
+      quickLookup.labelIdByName = labelIdByName;
+    }
+    if (result.projects && Array.isArray(result.projects)) {
+      quickLookup.projectIdByName = Object.fromEntries(
+        result.projects.map((p: { name: string; id: string }) => [p.name, p.id]),
+      );
+    }
+    result.quickLookup = quickLookup;
+
+    // Build meta
+    const meta = {
+      nextSteps: [
+        'Use quickLookup for fast ID resolution.',
+        'Use team IDs with list_issues to fetch issues.',
+        'Use stateIdByName to update issue states.',
+        'Use labelIdByName for label operations.',
+      ],
+      relatedTools: ['list_issues', 'create_issues', 'update_issues', 'list_projects'],
+    };
+    result.meta = meta;
 
     const structured = AccountOutputSchema.parse(result);
     const parts: Array<{ type: 'text'; text: string }> = [];

@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod';
+import { toolsMetadata } from '../../../config/metadata.js';
 import { config } from '../../../config/env.js';
 import { GetIssueOutputSchema, GetIssuesOutputSchema } from '../../../schemas/outputs.js';
 import { getLinearClient } from '../../../services/linear/client.js';
@@ -12,14 +13,17 @@ import { logger } from '../../../utils/logger.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
 
 const InputSchema = z.object({
-  ids: z.array(z.string()).min(1).max(50),
+  ids: z
+    .array(z.string())
+    .min(1)
+    .max(50)
+    .describe('Issue IDs to fetch. Accepts UUIDs or short identifiers like ENG-123.'),
 });
 
 export const getIssuesTool = defineTool({
-  name: 'get_issues',
-  title: 'Get Issues (Batch)',
-  description:
-    'Fetch multiple issues by id (UUID or short ID like ENG-123) and return per-item results plus a summary.',
+  name: toolsMetadata.get_issues.name,
+  title: toolsMetadata.get_issues.title,
+  description: toolsMetadata.get_issues.description,
   inputSchema: InputSchema,
   annotations: {
     readOnlyHint: true,
@@ -32,13 +36,10 @@ export const getIssuesTool = defineTool({
     const ids = args.ids;
 
     const results: Array<{
-      index: number;
-      ok: boolean;
-      id?: string;
-      identifier?: string;
-      error?: string;
-      code?: string;
+      requestedId: string;
+      success: boolean;
       issue?: ReturnType<typeof GetIssueOutputSchema.parse>;
+      error?: { code: string; message: string; suggestions?: string[] };
     }> = [];
 
     for (let i = 0; i < ids.length; i++) {
@@ -55,11 +56,14 @@ export const getIssuesTool = defineTool({
         const stateData = await issue.state;
         const projectData = await issue.project;
 
+        const issueUrl = (issue as unknown as { url?: string })?.url;
+
         const structured = GetIssueOutputSchema.parse({
           id: issue.id,
           title: issue.title,
           description: issue.description ?? undefined,
           identifier: issue.identifier ?? undefined,
+          url: issueUrl,
           assignee: assigneeData
             ? {
                 id: assigneeData.id,
@@ -85,10 +89,8 @@ export const getIssuesTool = defineTool({
         });
 
         results.push({
-          index: i,
-          ok: true,
-          id: structured.id,
-          identifier: structured.identifier,
+          requestedId: id,
+          success: true,
           issue: structured,
         });
       } catch (error) {
@@ -98,51 +100,74 @@ export const getIssuesTool = defineTool({
           error: (error as Error).message,
         });
         results.push({
-          index: i,
-          ok: false,
-          error: (error as Error).message,
-          code: 'LINEAR_FETCH_ERROR',
+          requestedId: id,
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: (error as Error).message,
+            suggestions: [
+              'Verify the issue ID or identifier is correct.',
+              'Use list_issues to find valid issue IDs.',
+              'Check if the issue was archived (use includeArchived: true).',
+            ],
+          },
         });
       }
     }
 
+    const succeeded = results.filter((r) => r.success).length;
+    const failed = results.filter((r) => !r.success).length;
+
     const summary = {
-      ok: results.filter((r) => r.ok).length,
-      failed: results.filter((r) => !r.ok).length,
+      succeeded,
+      failed,
     };
 
-    const structuredBatch = GetIssuesOutputSchema.parse({ results, summary });
+    // Build meta with next steps
+    const meta = {
+      nextSteps: [
+        'Use update_issues to modify state, assignee, or labels.',
+        'Use add_comments to add context or updates.',
+      ],
+      relatedTools: ['update_issues', 'add_comments', 'list_issues'],
+    };
+
+    const structuredBatch = GetIssuesOutputSchema.parse({ results, summary, meta });
 
     const okIds = results
-      .filter((r) => r.ok)
-      .map((r) => r.identifier ?? r.id ?? `item[${r.index}]`);
+      .filter((r) => r.success)
+      .map((r) => r.issue?.identifier ?? r.issue?.id ?? r.requestedId);
 
     const messageBase = summarizeBatch({
       action: 'Fetched issues',
-      ok: summary.ok,
+      ok: succeeded,
       total: ids.length,
       okIdentifiers: okIds as string[],
       failures: results
-        .filter((r) => !r.ok)
-        .map((r) => ({ index: r.index, id: undefined, error: r.error ?? '' })),
+        .filter((r) => !r.success)
+        .map((r, idx) => ({ index: idx, id: r.requestedId, error: r.error?.message ?? '' })),
       nextSteps: [
         'Call update_issues to modify fields, or list_issues to discover more.',
       ],
     });
 
     const previewLines = results
-      .filter((r) => r.ok && r.issue)
+      .filter((r) => r.success && r.issue)
       .map((r) => {
         const it = r.issue as unknown as {
           identifier?: string;
           id: string;
+          url?: string;
           state?: { name?: string };
           assignee?: { name?: string };
           title: string;
         };
         const stateNm = it.state?.name as string | undefined;
         const assNm = it.assignee?.name as string | undefined;
-        return `${it.identifier ?? it.id} '${it.title}'${
+        const prefix = it.url
+          ? `[${it.identifier ?? it.id}](${it.url})`
+          : it.identifier ?? it.id;
+        return `${prefix} '${it.title}'${
           stateNm ? ` — state ${stateNm}` : ''
         }${assNm ? `, assignee ${assNm}` : ''}`;
       });

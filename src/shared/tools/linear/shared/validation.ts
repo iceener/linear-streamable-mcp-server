@@ -52,7 +52,8 @@ export async function validateEstimate(
 }
 
 /**
- * Validate priority value
+ * Validate priority value.
+ * Linear priority: 0 = No priority, 1 = Urgent, 2 = High, 3 = Normal, 4 = Low.
  */
 export function validatePriority(
   priority: number | string | undefined,
@@ -62,7 +63,8 @@ export function validatePriority(
   }
 
   const n = typeof priority === 'string' ? Number(priority) : priority;
-  if (Number.isFinite(n) && (n as number) >= 0) {
+  // Validate range 0-4 per Linear API
+  if (Number.isInteger(n) && n >= 0 && n <= 4) {
     return n;
   }
 
@@ -114,6 +116,16 @@ export function shouldIncludeField(value: unknown, allowEmpty = false): boolean 
   // Include all other values
   return true;
 }
+
+
+
+
+
+
+
+
+
+
 
 
 

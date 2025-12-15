@@ -30,6 +30,13 @@ const PaginationInput = z
   })
   .strict();
 
+export const DetailLevelSchema = z
+  .enum(['minimal', 'standard', 'full'])
+  .optional()
+  .describe(
+    "Detail level: 'minimal' (id, title, state, url), 'standard' (+ priority, assignee, project, dueDate), 'full' (+ description, labels). Default: 'standard'.",
+  );
+
 export const ListIssuesInputSchema = PaginationInput.extend({
   filter: z
     .record(z.any())
@@ -41,9 +48,10 @@ export const ListIssuesInputSchema = PaginationInput.extend({
   projectId: z.string().optional(),
   includeArchived: z.boolean().optional(),
   orderBy: z
-    .enum(['updatedAt', 'createdAt', 'priority'])
+    .enum(['updatedAt', 'createdAt'])
     .optional()
-    .describe("Default: 'updatedAt' (prefer recency)."),
+    .describe("Sort order. Default: 'updatedAt'. Note: priority sorting not supported by Linear API - use filter.priority instead."),
+  detail: DetailLevelSchema,
   // Keyword helpers
   q: z
     .string()
@@ -55,12 +63,6 @@ export const ListIssuesInputSchema = PaginationInput.extend({
     .array(z.string())
     .optional()
     .describe('Explicit keywords; applies OR of title.containsIgnoreCase for each'),
-  fullDescriptions: z
-    .boolean()
-    .optional()
-    .describe(
-      'If true, include full descriptions in the human-readable message block (structuredContent always includes full description).',
-    ),
 }).strict();
 export type ListIssuesInput = z.infer<typeof ListIssuesInputSchema>;
 
@@ -75,7 +77,8 @@ export type GetIssuesInput = z.infer<typeof GetIssuesInputSchema>;
 export const ListMyIssuesInputSchema = PaginationInput.extend({
   filter: z.record(z.any()).optional(),
   includeArchived: z.boolean().optional(),
-  orderBy: z.enum(['updatedAt', 'createdAt', 'priority']).optional(),
+  orderBy: z.enum(['updatedAt', 'createdAt']).optional(),
+  detail: DetailLevelSchema,
   q: z.string().optional(),
   keywords: z.array(z.string()).optional(),
   fullDescriptions: z
@@ -252,6 +255,16 @@ export const AddCommentsInputSchema = z
   })
   .strict();
 export type AddCommentsInput = z.infer<typeof AddCommentsInputSchema>;
+
+
+
+
+
+
+
+
+
+
 
 
 

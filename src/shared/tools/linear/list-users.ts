@@ -38,10 +38,34 @@ export const listUsersTool = defineTool({
     const items = connection.nodes.map(mapUserNodeToListItem);
     const pageInfo = connection.pageInfo;
 
+    const hasMore = pageInfo.hasNextPage;
+    const nextCursor = hasMore ? pageInfo.endCursor : undefined;
+
+    // Build pagination
+    const pagination = {
+      hasMore,
+      nextCursor,
+      itemsReturned: items.length,
+      limit,
+    };
+
+    // Build meta
+    const meta = {
+      nextSteps: [
+        ...(hasMore ? [`Call again with cursor="${nextCursor}" for more.`] : []),
+        'Use user id as assigneeId in create_issues or update_issues.',
+        'Use assigneeName or assigneeEmail in create/update_issues for name-based assignment.',
+      ],
+      relatedTools: ['create_issues', 'update_issues'],
+    };
+
     const structured = ListUsersOutputSchema.parse({
       items,
+      pagination,
+      meta,
+      // Legacy
       cursor: args.cursor,
-      nextCursor: pageInfo.hasNextPage ? pageInfo.endCursor : undefined,
+      nextCursor,
       limit,
     });
 
@@ -58,9 +82,9 @@ export const listUsersTool = defineTool({
       subject: 'Users',
       count: items.length,
       limit,
-      nextCursor: structured.nextCursor,
+      nextCursor,
       previewLines: preview,
-      nextSteps: ['Use user id as assigneeId in create_issues or update_issues.'],
+      nextSteps: meta.nextSteps,
     });
 
     return {

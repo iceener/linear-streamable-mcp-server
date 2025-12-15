@@ -72,7 +72,7 @@ export const toolsMetadata = {
     name: 'list_issues',
     title: 'List Issues',
     description:
-      'List issues in the workspace with powerful filtering and ordering. Inputs: teamId?, projectId?, filter? (IssueFilter), q?/keywords? for title tokens, includeArchived?, orderBy?(updatedAt|createdAt|priority), limit?, cursor?, fullDescriptions?.\n\nFILTERING BY STATE (important!):\n- State types: \'backlog\', \'unstarted\', \'started\', \'completed\', \'canceled\'\n- Active/open issues: filter: { state: { type: { neq: \'completed\' } } }\n- In progress only: filter: { state: { type: { eq: \'started\' } } }\n- By state name: filter: { state: { name: { eq: \'In Progress\' } } }\n\nTitle search: pass q: "text" or keywords: ["word1", "word2"] (case-insensitive OR on title).\nReturns: { items[], cursor?, nextCursor?, limit? }. Items include id, title, description?, stateId, projectId?, assigneeId?, labels[]. Use ids discovered via \'workspace_metadata\'.',
+      'List issues with filtering. Inputs: teamId?, projectId?, filter?, q?/keywords?, includeArchived?, orderBy?(updatedAt|createdAt), detail?(minimal|standard|full), limit?, cursor?, assignedToMe?.\n\n⚠️ orderBy only supports updatedAt or createdAt. DO NOT use orderBy:"priority" - use filter instead!\n\nFILTERING:\n- High priority: filter: { priority: { lte: 2 } } (1=Urgent, 2=High, 3=Medium, 4=Low)\n- Active issues: filter: { state: { type: { neq: \'completed\' } } }\n- In progress: filter: { state: { type: { eq: \'started\' } } }\n- My issues: assignedToMe: true\n\nDETAIL LEVELS: minimal (id,title,state), standard (default, +priority,assignee,project), full (+labels,description).\n\nReturns: { items[], pagination, meta }.',
   },
 
   get_issues: {
@@ -86,7 +86,7 @@ export const toolsMetadata = {
     name: 'list_my_issues',
     title: 'List My Issues',
     description:
-      "List issues assigned to the current user with filtering and ordering. Inputs: filter?, q?/keywords?, includeArchived?, orderBy?, limit?, cursor?, fullDescriptions?.\n\nFILTERING BY STATE (important!):\n- State types: 'backlog', 'unstarted', 'started', 'completed', 'canceled'\n- Active/open issues: filter: { state: { type: { neq: 'completed' } } }\n- In progress only: filter: { state: { type: { eq: 'started' } } }\n- Completed only: filter: { state: { type: { eq: 'completed' } } }\n- By state name: filter: { state: { name: { eq: 'Done' } } }\n\nTitle search: pass q: \"text\" or keywords: [\"word1\", \"word2\"] (case-insensitive OR on title).\nReturns: Same shape as 'list_issues' for the current viewer's assigned issues. Next: Use 'update_issues' to change state/assignee.",
+      "List issues assigned to you. Inputs: filter?, q?/keywords?, includeArchived?, orderBy?(updatedAt|createdAt), detail?(minimal|standard|full), limit?, cursor?.\n\n⚠️ orderBy only supports updatedAt or createdAt. DO NOT use orderBy:\"priority\" - use filter instead!\n\nFILTERING:\n- High priority: filter: { priority: { lte: 2 } } (1=Urgent, 2=High)\n- Active issues: filter: { state: { type: { neq: 'completed' } } }\n- In progress: filter: { state: { type: { eq: 'started' } } }\n\nDETAIL LEVELS: minimal (id,title,state), standard (default), full (+labels,description).\n\nReturns: Same as list_issues but pre-filtered to your assignments.",
   },
 
   create_issues: {
@@ -150,6 +150,13 @@ export const toolsMetadata = {
     title: 'Add Comments (Batch)',
     description:
       'Add one or more comments to issues. Inputs: { items: Array<{ issueId: string; body: string }>, parallel?, dry_run? }.\nReturns: per-item results and a summary. Next: Use list_comments to verify and retrieve the comment URLs.',
+  },
+
+  update_comments: {
+    name: 'update_comments',
+    title: 'Update Comments (Batch)',
+    description:
+      'Update existing comment bodies. Cannot delete comments (by design). Inputs: { items: Array<{ id: string; body: string }> }.\nReturns: per-item results and a summary. Next: Use list_comments to verify changes.',
   },
 
   list_cycles: {

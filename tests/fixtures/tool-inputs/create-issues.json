@@ -1,0 +1,116 @@
+{
+  "valid": [
+    {
+      "name": "minimal_issue",
+      "input": {
+        "items": [{ "teamId": "team-eng", "title": "New issue" }]
+      },
+      "description": "Minimal issue with only required fields"
+    },
+    {
+      "name": "full_issue",
+      "input": {
+        "items": [{
+          "teamId": "team-eng",
+          "title": "Implement new feature",
+          "description": "Detailed description of the feature",
+          "stateId": "state-todo",
+          "labelIds": ["label-feature"],
+          "assigneeId": "user-001",
+          "projectId": "project-001",
+          "priority": 2,
+          "estimate": 5,
+          "dueDate": "2025-01-15"
+        }]
+      },
+      "description": "Issue with all optional fields"
+    },
+    {
+      "name": "batch_create",
+      "input": {
+        "items": [
+          { "teamId": "team-eng", "title": "Issue 1" },
+          { "teamId": "team-eng", "title": "Issue 2" },
+          { "teamId": "team-eng", "title": "Issue 3" }
+        ]
+      },
+      "description": "Batch create multiple issues"
+    },
+    {
+      "name": "with_parent_issue",
+      "input": {
+        "items": [{
+          "teamId": "team-eng",
+          "title": "Sub-task",
+          "parentId": "issue-001"
+        }]
+      },
+      "description": "Create sub-issue with parent"
+    },
+    {
+      "name": "priority_as_number",
+      "input": {
+        "items": [{
+          "teamId": "team-eng",
+          "title": "Priority test",
+          "priority": 1
+        }]
+      },
+      "description": "Priority as number"
+    },
+    {
+      "name": "with_zero_estimate_allowed",
+      "input": {
+        "items": [{
+          "teamId": "team-eng",
+          "title": "Zero estimate",
+          "estimate": 0,
+          "allowZeroEstimate": true
+        }]
+      },
+      "description": "Explicitly allow zero estimate"
+    },
+    {
+      "name": "dry_run",
+      "input": {
+        "items": [{ "teamId": "team-eng", "title": "Dry run test" }],
+        "dry_run": true
+      },
+      "description": "Dry run does not create issues"
+    },
+    {
+      "name": "parallel_execution",
+      "input": {
+        "items": [
+          { "teamId": "team-eng", "title": "Parallel 1" },
+          { "teamId": "team-eng", "title": "Parallel 2" }
+        ],
+        "parallel": true
+      },
+      "description": "Execute creates in parallel"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "empty_items",
+      "input": { "items": [] },
+      "expectedError": "Array must contain at least 1 element"
+    },
+    {
+      "name": "missing_team_id",
+      "input": { "items": [{ "title": "No team" }] },
+      "expectedError": "Required"
+    },
+    {
+      "name": "missing_title",
+      "input": { "items": [{ "teamId": "team-eng" }] },
+      "expectedError": "Required"
+    },
+    {
+      "name": "invalid_priority",
+      "input": { "items": [{ "teamId": "team-eng", "title": "Test", "priority": "high" }] },
+      "expectedError": "Invalid"
+    }
+  ]
+}
+

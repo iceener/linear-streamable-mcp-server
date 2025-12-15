@@ -20,7 +20,10 @@ export interface IssueSnapshot {
   labels: Array<{ id: string; name: string }>;
 }
 
+export type DetailLevel = 'minimal' | 'standard' | 'full';
+
 export interface FormattingOptions {
+  detail?: DetailLevel;
   fullDescriptions?: boolean;
   maxPreviewLength?: number;
   maxItems?: number;
@@ -61,6 +64,16 @@ export interface FieldChanges {
   };
   archived?: { before: boolean; after: boolean };
 }
+
+
+
+
+
+
+
+
+
+
 
 
 

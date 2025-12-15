@@ -1,0 +1,138 @@
+{
+  "valid": [
+    {
+      "name": "update_title",
+      "input": {
+        "items": [{ "id": "issue-001", "title": "Updated title" }]
+      },
+      "description": "Update issue title"
+    },
+    {
+      "name": "update_state",
+      "input": {
+        "items": [{ "id": "issue-001", "stateId": "state-done" }]
+      },
+      "description": "Move issue to different state"
+    },
+    {
+      "name": "update_assignee",
+      "input": {
+        "items": [{ "id": "issue-001", "assigneeId": "user-002" }]
+      },
+      "description": "Reassign issue to different user"
+    },
+    {
+      "name": "add_labels",
+      "input": {
+        "items": [{ "id": "issue-001", "addLabelIds": ["label-feature"] }]
+      },
+      "description": "Add labels incrementally"
+    },
+    {
+      "name": "remove_labels",
+      "input": {
+        "items": [{ "id": "issue-001", "removeLabelIds": ["label-bug"] }]
+      },
+      "description": "Remove labels incrementally"
+    },
+    {
+      "name": "replace_labels",
+      "input": {
+        "items": [{ "id": "issue-001", "labelIds": ["label-docs"] }]
+      },
+      "description": "Replace all labels"
+    },
+    {
+      "name": "update_priority",
+      "input": {
+        "items": [{ "id": "issue-001", "priority": 1 }]
+      },
+      "description": "Update issue priority"
+    },
+    {
+      "name": "update_estimate",
+      "input": {
+        "items": [{ "id": "issue-001", "estimate": 8 }]
+      },
+      "description": "Update issue estimate"
+    },
+    {
+      "name": "update_due_date",
+      "input": {
+        "items": [{ "id": "issue-001", "dueDate": "2025-02-01" }]
+      },
+      "description": "Set due date"
+    },
+    {
+      "name": "move_to_project",
+      "input": {
+        "items": [{ "id": "issue-001", "projectId": "project-002" }]
+      },
+      "description": "Move issue to different project"
+    },
+    {
+      "name": "archive_issue",
+      "input": {
+        "items": [{ "id": "issue-001", "archived": true }]
+      },
+      "description": "Archive an issue"
+    },
+    {
+      "name": "batch_update",
+      "input": {
+        "items": [
+          { "id": "issue-001", "stateId": "state-done" },
+          { "id": "issue-002", "stateId": "state-inprogress" },
+          { "id": "issue-003", "assigneeId": "user-001" }
+        ]
+      },
+      "description": "Batch update multiple issues"
+    },
+    {
+      "name": "multiple_fields",
+      "input": {
+        "items": [{
+          "id": "issue-001",
+          "title": "Updated",
+          "stateId": "state-done",
+          "priority": 1,
+          "addLabelIds": ["label-feature"]
+        }]
+      },
+      "description": "Update multiple fields at once"
+    },
+    {
+      "name": "by_identifier",
+      "input": {
+        "items": [{ "id": "ENG-123", "stateId": "state-done" }]
+      },
+      "description": "Update using short identifier (ENG-123)"
+    },
+    {
+      "name": "dry_run",
+      "input": {
+        "items": [{ "id": "issue-001", "title": "Dry run" }],
+        "dry_run": true
+      },
+      "description": "Dry run does not update issues"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "empty_items",
+      "input": { "items": [] },
+      "expectedError": "Array must contain at least 1 element"
+    },
+    {
+      "name": "missing_id",
+      "input": { "items": [{ "title": "No ID" }] },
+      "expectedError": "Required"
+    },
+    {
+      "name": "invalid_priority",
+      "input": { "items": [{ "id": "issue-001", "priority": "urgent" }] },
+      "expectedError": "Invalid"
+    }
+  ]
+}
+
