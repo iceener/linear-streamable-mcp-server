@@ -66,8 +66,9 @@ export const listProjectsTool = defineTool({
     
     const items = conn.nodes.map((p) => mapProjectNodeToListItem(p));
     
-    const hasMore = !!conn.pageInfo?.endCursor;
-    const nextCursor = conn.pageInfo?.endCursor ?? undefined;
+    const pageInfo = conn.pageInfo;
+    const hasMore = pageInfo?.hasNextPage ?? false;
+    const nextCursor = hasMore ? pageInfo?.endCursor ?? undefined : undefined;
 
     // Build query echo
     const query = {

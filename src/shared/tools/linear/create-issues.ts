@@ -11,6 +11,7 @@ import { makeConcurrencyGate, withRetry, delay } from '../../../utils/limits.js'
 import { logger } from '../../../utils/logger.js';
 import { summarizeBatch } from '../../../utils/messages.js';
 import { resolveAssignee } from '../../../utils/user-resolver.js';
+import { resolvePriority, resolveState, resolveLabels, resolveProject } from '../../../utils/resolvers.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
 import { createTeamSettingsCache, validateEstimate, validatePriority } from './shared/index.js';
 
@@ -18,37 +19,58 @@ const IssueCreateItem = z.object({
   teamId: z.string().describe('Team UUID. Required.'),
   title: z.string().describe('Issue title. Required.'),
   description: z.string().optional().describe('Markdown description.'),
+  // State - UUID or human-readable
   stateId: z
     .string()
     .optional()
-    .describe('Workflow state UUID. Get from workspace_metadata.workflowStatesByTeam.'),
+    .describe('Workflow state UUID. Or use stateName/stateType for name-based lookup.'),
+  stateName: z
+    .string()
+    .optional()
+    .describe('State name from your workspace. Use workspace_metadata to see available names.'),
+  stateType: z
+    .enum(['backlog', 'unstarted', 'started', 'completed', 'canceled'])
+    .optional()
+    .describe('State type. Finds first matching state. Use when you want "any completed state".'),
+  // Labels - UUIDs or names
   labelIds: z.array(z.string()).optional().describe('Label UUIDs to attach.'),
+  labelNames: z
+    .array(z.string())
+    .optional()
+    .describe('Label names from your workspace. Use workspace_metadata to see available labels.'),
+  // Assignee - UUID, name, or email
   assigneeId: z
     .string()
     .optional()
-    .describe('User UUID. If omitted, defaults to current viewer. Use assigneeName or assigneeEmail for name-based lookup.'),
+    .describe('User UUID. If omitted, defaults to current viewer.'),
   assigneeName: z
     .string()
     .optional()
-    .describe('User name to assign (fuzzy match). Resolved to assigneeId automatically. Example: "John" matches "John Smith".'),
+    .describe('User name (fuzzy match). Partial names work. Use workspace_metadata to list users.'),
   assigneeEmail: z
     .string()
     .optional()
-    .describe('User email to assign (exact match, case-insensitive). Resolved to assigneeId automatically.'),
-  projectId: z.string().optional().describe('Project UUID to associate.'),
-  priority: z
-    .number()
-    .int()
-    .min(0)
-    .max(4)
+    .describe('User email to assign (exact match, case-insensitive).'),
+  // Project - UUID or name
+  projectId: z.string().optional().describe('Project UUID.'),
+  projectName: z
+    .string()
     .optional()
-    .describe('Priority: 0=none, 1=urgent, 2=high, 3=medium, 4=low.'),
+    .describe('Project name. Resolved to projectId automatically.'),
+  // Priority - number or string
+  priority: z
+    .union([
+      z.number().int().min(0).max(4),
+      z.enum(['None', 'Urgent', 'High', 'Medium', 'Normal', 'Low', 'none', 'urgent', 'high', 'medium', 'normal', 'low']),
+    ])
+    .optional()
+    .describe('Priority: 0-4 or "None"/"Urgent"/"High"/"Medium"/"Low".'),
   estimate: z.number().optional().describe('Story points / estimate value.'),
   allowZeroEstimate: z
     .boolean()
     .optional()
-    .describe('If true and estimate=0, sends 0. Otherwise zero is omitted to avoid team validation errors.'),
-  dueDate: z.string().optional().describe('Due date in ISO format (YYYY-MM-DD).'),
+    .describe('If true and estimate=0, sends 0. Otherwise zero is omitted.'),
+  dueDate: z.string().optional().describe('Due date (YYYY-MM-DD).'),
   parentId: z.string().optional().describe('Parent issue UUID for sub-issues.'),
 });
 
@@ -119,12 +141,61 @@ export const createIssuesTool = defineTool({
           payloadInput.description = it.description;
         }
 
-        if (typeof it.stateId === 'string' && it.stateId) {
+        // Resolve state from ID, name, or type
+        if (it.stateId) {
           payloadInput.stateId = it.stateId;
+        } else if (it.stateName || it.stateType) {
+          const stateResult = await resolveState(client, it.teamId, {
+            stateName: it.stateName,
+            stateType: it.stateType,
+          });
+          if (!stateResult.success) {
+            results.push({
+              input: { title: it.title, teamId: it.teamId, stateName: it.stateName, stateType: it.stateType },
+              success: false,
+              error: { code: 'STATE_RESOLUTION_FAILED', message: stateResult.error, suggestions: stateResult.suggestions },
+              index: i,
+              ok: false,
+            });
+            continue;
+          }
+          payloadInput.stateId = stateResult.value;
         }
 
+        // Resolve labels from IDs or names
         if (Array.isArray(it.labelIds) && it.labelIds.length > 0) {
           payloadInput.labelIds = it.labelIds;
+        } else if (Array.isArray(it.labelNames) && it.labelNames.length > 0) {
+          const labelsResult = await resolveLabels(client, it.teamId, it.labelNames);
+          if (!labelsResult.success) {
+            results.push({
+              input: { title: it.title, teamId: it.teamId, labelNames: it.labelNames },
+              success: false,
+              error: { code: 'LABEL_RESOLUTION_FAILED', message: labelsResult.error, suggestions: labelsResult.suggestions },
+              index: i,
+              ok: false,
+            });
+            continue;
+          }
+          payloadInput.labelIds = labelsResult.value;
+        }
+
+        // Resolve project from ID or name
+        if (it.projectId) {
+          payloadInput.projectId = it.projectId;
+        } else if (it.projectName) {
+          const projectResult = await resolveProject(client, it.projectName);
+          if (!projectResult.success) {
+            results.push({
+              input: { title: it.title, teamId: it.teamId, projectName: it.projectName },
+              success: false,
+              error: { code: 'PROJECT_RESOLUTION_FAILED', message: projectResult.error, suggestions: projectResult.suggestions },
+              index: i,
+              ok: false,
+            });
+            continue;
+          }
+          payloadInput.projectId = projectResult.value;
         }
 
         // Resolve assignee from ID, name, or email
@@ -164,14 +235,23 @@ export const createIssuesTool = defineTool({
           } catch {}
         }
 
-        if (typeof it.projectId === 'string' && it.projectId) {
-          payloadInput.projectId = it.projectId;
-        }
-
-        // Use shared validation
-        const priority = validatePriority(it.priority);
-        if (priority !== undefined) {
-          payloadInput.priority = priority;
+        // Resolve priority from number or string
+        if (it.priority !== undefined) {
+          const priorityResult = resolvePriority(it.priority);
+          if (!priorityResult.success) {
+            results.push({
+              input: { title: it.title, teamId: it.teamId, priority: it.priority },
+              success: false,
+              error: { code: 'PRIORITY_INVALID', message: priorityResult.error, suggestions: priorityResult.suggestions },
+              index: i,
+              ok: false,
+            });
+            continue;
+          }
+          const validatedPriority = validatePriority(priorityResult.value);
+          if (validatedPriority !== undefined) {
+            payloadInput.priority = validatedPriority;
+          }
         }
 
         // Use shared validation for estimate
@@ -313,17 +393,19 @@ export const createIssuesTool = defineTool({
       );
     }
 
-    const summaryText = summarizeBatch({
+    // Build summary without next steps (tips go at the end)
+    const summaryLine = summarizeBatch({
       action: 'Created issues',
       ok: summary.ok,
       total: items.length,
       okIdentifiers: okIds,
       failures,
-      nextSteps: [
-        'Use list_issues (filter by id or by number+team.key/team.id, limit=1) to verify details, or update_issues to modify.',
-        ...failureHints,
-      ],
     });
+
+    const tips = [
+      'Tip: Use list_issues to verify details, or update_issues to modify.',
+      ...failureHints,
+    ];
 
     const detailLines: string[] = [];
     for (const r of results.filter((r) => r.ok)) {
@@ -375,10 +457,13 @@ export const createIssuesTool = defineTool({
       } catch {}
     }
 
-    const text =
-      detailLines.length > 0
-        ? `${summaryText}\n\n${detailLines.join('\n')}`
-        : summaryText;
+    // Compose: summary → details → tips
+    const textParts = [summaryLine];
+    if (detailLines.length > 0) {
+      textParts.push(detailLines.join('\n'));
+    }
+    textParts.push(tips.join(' '));
+    const text = textParts.join('\n\n');
 
     const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text }];
 

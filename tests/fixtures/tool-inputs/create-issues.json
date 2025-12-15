@@ -26,6 +26,13 @@
       "description": "Issue with all optional fields"
     },
     {
+      "name": "priority_string",
+      "input": {
+        "items": [{ "teamId": "team-eng", "title": "Test", "priority": "High" }]
+      },
+      "description": "String priority (High) is valid"
+    },
+    {
       "name": "batch_create",
       "input": {
         "items": [
@@ -108,7 +115,7 @@
     },
     {
       "name": "invalid_priority",
-      "input": { "items": [{ "teamId": "team-eng", "title": "Test", "priority": "high" }] },
+      "input": { "items": [{ "teamId": "team-eng", "title": "Test", "priority": "INVALID_VALUE" }] },
       "expectedError": "Invalid"
     }
   ]

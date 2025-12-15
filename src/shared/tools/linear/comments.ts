@@ -42,8 +42,9 @@ export const listCommentsTool = defineTool({
     const conn = await issue.comments({ first, after });
     const items = await Promise.all(conn.nodes.map((c) => mapCommentNodeToListItem(c)));
     
-    const hasMore = !!conn.pageInfo?.endCursor;
-    const nextCursor = conn.pageInfo?.endCursor ?? undefined;
+    const pageInfo = conn.pageInfo;
+    const hasMore = pageInfo?.hasNextPage ?? false;
+    const nextCursor = hasMore ? pageInfo?.endCursor ?? undefined : undefined;
 
     // Build query echo
     const query = {

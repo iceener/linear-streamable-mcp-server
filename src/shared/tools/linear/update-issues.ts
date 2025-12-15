@@ -11,6 +11,7 @@ import { makeConcurrencyGate, withRetry, delay } from '../../../utils/limits.js'
 import { logger } from '../../../utils/logger.js';
 import { summarizeBatch } from '../../../utils/messages.js';
 import { resolveAssignee } from '../../../utils/user-resolver.js';
+import { resolvePriority, resolveState, resolveLabels, resolveProject, getIssueTeamId } from '../../../utils/resolvers.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
 import {
   createTeamSettingsCache,
@@ -25,30 +26,50 @@ const IssueUpdateItem = z.object({
   id: z.string().describe('Issue UUID or identifier (e.g. ENG-123). Required.'),
   title: z.string().optional().describe('New title.'),
   description: z.string().optional().describe('New markdown description.'),
+  // State - UUID or human-readable
   stateId: z
     .string()
     .optional()
-    .describe('New workflow state UUID. Get from workspace_metadata.workflowStatesByTeam.'),
+    .describe('Workflow state UUID. Or use stateName/stateType for name-based lookup.'),
+  stateName: z
+    .string()
+    .optional()
+    .describe('State name from issue\'s team. Use workspace_metadata to see available names.'),
+  stateType: z
+    .enum(['backlog', 'unstarted', 'started', 'completed', 'canceled'])
+    .optional()
+    .describe('State type. Finds first matching state.'),
+  // Labels - UUIDs or names (use workspace_metadata to see available labels)
   labelIds: z.array(z.string()).optional().describe('Replace all labels with these UUIDs.'),
+  labelNames: z
+    .array(z.string())
+    .optional()
+    .describe('Replace all labels with these names from your workspace.'),
   addLabelIds: z.array(z.string()).optional().describe('Add these label UUIDs (incremental).'),
+  addLabelNames: z.array(z.string()).optional().describe('Add these label names (incremental).'),
   removeLabelIds: z.array(z.string()).optional().describe('Remove these label UUIDs (incremental).'),
-  assigneeId: z.string().optional().describe('New assignee user UUID. Use assigneeName or assigneeEmail for name-based lookup.'),
+  removeLabelNames: z.array(z.string()).optional().describe('Remove these label names (incremental).'),
+  // Assignee - UUID, name, or email (use workspace_metadata to list users)
+  assigneeId: z.string().optional().describe('New assignee user UUID.'),
   assigneeName: z
     .string()
     .optional()
-    .describe('User name to assign (fuzzy match). Resolved to assigneeId automatically. Example: "John" matches "John Smith".'),
+    .describe('User name (fuzzy match). Partial names work.'),
   assigneeEmail: z
     .string()
     .optional()
-    .describe('User email to assign (exact match, case-insensitive). Resolved to assigneeId automatically.'),
+    .describe('User email to assign (exact match, case-insensitive).'),
+  // Project - UUID or name
   projectId: z.string().optional().describe('New project UUID.'),
+  projectName: z.string().optional().describe('Project name. Resolved to projectId.'),
+  // Priority - number or string
   priority: z
-    .number()
-    .int()
-    .min(0)
-    .max(4)
+    .union([
+      z.number().int().min(0).max(4),
+      z.enum(['None', 'Urgent', 'High', 'Medium', 'Normal', 'Low', 'none', 'urgent', 'high', 'medium', 'normal', 'low']),
+    ])
     .optional()
-    .describe('Priority: 0=none, 1=urgent, 2=high, 3=medium, 4=low.'),
+    .describe('Priority: 0-4 or "None"/"Urgent"/"High"/"Medium"/"Low".'),
   estimate: z.number().optional().describe('New estimate / story points.'),
   allowZeroEstimate: z
     .boolean()
@@ -130,12 +151,84 @@ export const updateIssuesTool = defineTool({
           payloadInput.description = it.description;
         }
 
-        if (typeof it.stateId === 'string' && it.stateId) {
+        // Get team ID for resolution (needed for state/labels)
+        const teamId = await getIssueTeamId(client, it.id);
+
+        // Resolve state from ID, name, or type
+        if (it.stateId) {
           payloadInput.stateId = it.stateId;
+        } else if (it.stateName || it.stateType) {
+          if (!teamId) {
+            results.push({
+              index: i,
+              ok: false,
+              error: 'Cannot resolve state: failed to get issue team',
+              code: 'TEAM_RESOLUTION_FAILED',
+            });
+            continue;
+          }
+          const stateResult = await resolveState(client, teamId, {
+            stateName: it.stateName,
+            stateType: it.stateType,
+          });
+          if (!stateResult.success) {
+            results.push({
+              index: i,
+              ok: false,
+              error: stateResult.error,
+              code: 'STATE_RESOLUTION_FAILED',
+            });
+            continue;
+          }
+          payloadInput.stateId = stateResult.value;
         }
 
+        // Resolve labels from IDs or names
         if (Array.isArray(it.labelIds) && it.labelIds.length > 0) {
           payloadInput.labelIds = it.labelIds;
+        } else if (Array.isArray(it.labelNames) && it.labelNames.length > 0) {
+          if (!teamId) {
+            results.push({ index: i, ok: false, error: 'Cannot resolve labels: failed to get issue team', code: 'TEAM_RESOLUTION_FAILED' });
+            continue;
+          }
+          const labelsResult = await resolveLabels(client, teamId, it.labelNames);
+          if (!labelsResult.success) {
+            results.push({ index: i, ok: false, error: labelsResult.error, code: 'LABEL_RESOLUTION_FAILED' });
+            continue;
+          }
+          payloadInput.labelIds = labelsResult.value;
+        }
+
+        // Resolve addLabelNames
+        if (Array.isArray(it.addLabelIds) && it.addLabelIds.length > 0) {
+          payloadInput.addedLabelIds = it.addLabelIds;
+        } else if (Array.isArray(it.addLabelNames) && it.addLabelNames.length > 0) {
+          if (!teamId) {
+            results.push({ index: i, ok: false, error: 'Cannot resolve labels: failed to get issue team', code: 'TEAM_RESOLUTION_FAILED' });
+            continue;
+          }
+          const addResult = await resolveLabels(client, teamId, it.addLabelNames);
+          if (!addResult.success) {
+            results.push({ index: i, ok: false, error: addResult.error, code: 'LABEL_RESOLUTION_FAILED' });
+            continue;
+          }
+          payloadInput.addedLabelIds = addResult.value;
+        }
+
+        // Resolve removeLabelNames
+        if (Array.isArray(it.removeLabelIds) && it.removeLabelIds.length > 0) {
+          payloadInput.removedLabelIds = it.removeLabelIds;
+        } else if (Array.isArray(it.removeLabelNames) && it.removeLabelNames.length > 0) {
+          if (!teamId) {
+            results.push({ index: i, ok: false, error: 'Cannot resolve labels: failed to get issue team', code: 'TEAM_RESOLUTION_FAILED' });
+            continue;
+          }
+          const removeResult = await resolveLabels(client, teamId, it.removeLabelNames);
+          if (!removeResult.success) {
+            results.push({ index: i, ok: false, error: removeResult.error, code: 'LABEL_RESOLUTION_FAILED' });
+            continue;
+          }
+          payloadInput.removedLabelIds = removeResult.value;
         }
 
         // Resolve assignee from ID, name, or email
@@ -147,7 +240,6 @@ export const updateIssuesTool = defineTool({
           });
 
           if (!assigneeResult.success && assigneeResult.error) {
-            // User resolution failed - report error but continue batch
             results.push({
               index: i,
               ok: false,
@@ -162,14 +254,29 @@ export const updateIssuesTool = defineTool({
           }
         }
 
-        if (typeof it.projectId === 'string' && it.projectId) {
+        // Resolve project from ID or name
+        if (it.projectId) {
           payloadInput.projectId = it.projectId;
+        } else if (it.projectName) {
+          const projectResult = await resolveProject(client, it.projectName);
+          if (!projectResult.success) {
+            results.push({ index: i, ok: false, error: projectResult.error, code: 'PROJECT_RESOLUTION_FAILED' });
+            continue;
+          }
+          payloadInput.projectId = projectResult.value;
         }
 
-        // Use shared validation
-        const priority = validatePriority(it.priority);
-        if (priority !== undefined) {
-          payloadInput.priority = priority;
+        // Resolve priority from number or string
+        if (it.priority !== undefined) {
+          const priorityResult = resolvePriority(it.priority);
+          if (!priorityResult.success) {
+            results.push({ index: i, ok: false, error: priorityResult.error, code: 'PRIORITY_INVALID' });
+            continue;
+          }
+          const validatedPriority = validatePriority(priorityResult.value);
+          if (validatedPriority !== undefined) {
+            payloadInput.priority = validatedPriority;
+          }
         }
 
         // Use shared validation for estimate
@@ -366,20 +473,27 @@ export const updateIssuesTool = defineTool({
 
     const archivedRequested = items.some((x) => typeof x.archived === 'boolean');
 
-    const base = summarizeBatch({
+    // Build summary without next steps first
+    const summaryLine = summarizeBatch({
       action: 'Updated issues',
       ok: summary.ok,
       total: items.length,
       okIdentifiers: okIds,
       failures,
-      nextSteps: [
-        archivedRequested
-          ? 'Use list_issues (filter by id or by number+team.key/team.id, includeArchived: true, limit=1) for verification.'
-          : 'Use list_issues (filter by id or by number+team.key/team.id, limit=1) for verification.',
-      ],
     });
 
-    const text = diffLines.length > 0 ? `${base}\n\n${diffLines.join('\n')}` : base;
+    // Compose: summary → diffs → tips (diffs should come before tips)
+    const nextStep = archivedRequested
+      ? 'Tip: Use list_issues with includeArchived: true to verify archived issues.'
+      : 'Tip: Use list_issues to verify changes.';
+    
+    const textParts = [summaryLine];
+    if (diffLines.length > 0) {
+      textParts.push(diffLines.join('\n'));
+    }
+    textParts.push(nextStep);
+    
+    const text = textParts.join('\n\n');
 
     const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text }];
 

@@ -122,7 +122,7 @@ export const listMyIssuesTool = defineTool({
               url
               labels { nodes { id name } }
             }
-            pageInfo { endCursor }
+            pageInfo { hasNextPage endCursor }
           }
         }
       }
@@ -143,7 +143,7 @@ export const listMyIssuesTool = defineTool({
           viewer?: {
             assignedIssues?: {
               nodes?: Array<Record<string, unknown>>;
-              pageInfo?: { endCursor?: string };
+              pageInfo?: { hasNextPage?: boolean; endCursor?: string };
             };
           };
         };
@@ -186,8 +186,9 @@ export const listMyIssuesTool = defineTool({
       };
     });
 
-    const hasMore = !!conn.pageInfo?.endCursor;
-    const nextCursor = conn.pageInfo?.endCursor ?? undefined;
+    const pageInfo = conn.pageInfo ?? {};
+    const hasMore = pageInfo.hasNextPage ?? false;
+    const nextCursor = hasMore ? pageInfo.endCursor ?? undefined : undefined;
 
     // Build query echo for LLM context
     const query = {

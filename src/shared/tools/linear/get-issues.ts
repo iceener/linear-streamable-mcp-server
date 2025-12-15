@@ -138,7 +138,8 @@ export const getIssuesTool = defineTool({
       .filter((r) => r.success)
       .map((r) => r.issue?.identifier ?? r.issue?.id ?? r.requestedId);
 
-    const messageBase = summarizeBatch({
+    // Build summary without next steps (tips go at the end)
+    const summaryLine = summarizeBatch({
       action: 'Fetched issues',
       ok: succeeded,
       total: ids.length,
@@ -146,9 +147,6 @@ export const getIssuesTool = defineTool({
       failures: results
         .filter((r) => !r.success)
         .map((r, idx) => ({ index: idx, id: r.requestedId, error: r.error?.message ?? '' })),
-      nextSteps: [
-        'Call update_issues to modify fields, or list_issues to discover more.',
-      ],
     });
 
     const previewLines = results
@@ -172,10 +170,13 @@ export const getIssuesTool = defineTool({
         }${assNm ? `, assignee ${assNm}` : ''}`;
       });
 
-    const fullMessage =
-      previewLines.length > 0
-        ? `${messageBase} Preview:\n${previewLines.map((l) => `- ${l}`).join('\n')}`
-        : messageBase;
+    // Compose: summary → preview → tip
+    const textParts = [summaryLine];
+    if (previewLines.length > 0) {
+      textParts.push(`Preview:\n${previewLines.map((l) => `- ${l}`).join('\n')}`);
+    }
+    textParts.push('Tip: Use update_issues to modify, or list_issues to discover more.');
+    const fullMessage = textParts.join('\n\n');
 
     const parts: Array<{ type: 'text'; text: string }> = [
       { type: 'text', text: fullMessage },

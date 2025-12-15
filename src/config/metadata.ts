@@ -46,8 +46,9 @@ Filtering (list_issues)
   - State type: { state: { type: { eq: "started" } } }
   - Assignee email: { assignee: { email: { eqIgnoreCase: "name@acme.com" } } }
   - Title case-insensitive contains: { title: { containsIgnoreCase: "search" } }
-  - Labels: { labels: { name: { in: ["Bug", "Defect"] } } }
+  - Labels (use names from your workspace): { labels: { name: { in: ["LabelA", "LabelB"] } } }
 - Or use q/keywords to match title tokens automatically (case-insensitive OR of tokens).
+- Use workspace_metadata first to discover team/project/label/user names and IDs.
 
 Pagination
 - List tools return { cursor, nextCursor, limit }. Pass nextCursor to fetch the next page.
@@ -93,14 +94,14 @@ export const toolsMetadata = {
     name: 'create_issues',
     title: 'Create Issues (Batch)',
     description:
-      "Create multiple issues in one call. Inputs: { items: Array<{ teamId: string; title: string; description?; stateId?; labelIds?; assigneeId?; projectId?; priority?; estimate?; dueDate?; parentId?; allowZeroEstimate? }>; parallel?; dry_run? }.\nBehavior: Only send fields you intend to set. If 'assigneeId' is omitted, THIS TOOL DEFAULTS it to the current viewer id (from your authenticated context). Invalid numbers are ignored (priority<0 is dropped; estimate<=0 is dropped unless allowZeroEstimate=true or team allows zero estimates). Returns: per-item results with created id/identifier and a summary. Next: verify with 'list_issues' (filter by id or by number+team.key/team.id, limit=1).",
+      "Create multiple issues in one call. Inputs: { items: Array<{ teamId: string; title: string; description?; stateId?; stateName?; stateType?; labelIds?; labelNames?; assigneeId?; assigneeName?; assigneeEmail?; projectId?; projectName?; priority?; estimate?; dueDate?; parentId?; allowZeroEstimate? }>; parallel?; dry_run? }.\n\nHUMAN-READABLE INPUTS (use workspace_metadata to discover valid values):\n- priority: 0-4 or \"Urgent\"/\"High\"/\"Medium\"/\"Low\" (standardized)\n- stateType: \"completed\"/\"started\"/\"backlog\"/\"unstarted\"/\"canceled\" (standardized)\n- stateName/labelNames/assigneeName/projectName: workspace-specific\n\nBehavior: Only send fields you intend to set. If 'assigneeId' is omitted, defaults to current viewer. Invalid numbers are ignored (priority<0 dropped; estimate<=0 dropped unless allowZeroEstimate=true). Returns: per-item results with id/identifier. Next: verify with 'list_issues'.",
   },
 
   update_issues: {
     name: 'update_issues',
     title: 'Update Issues (Batch)',
     description:
-      "Update issues in batch (state, labels, assignee, metadata). Supports up to 50 items per call — always batch all updates together instead of calling multiple times. Inputs: { items: Array<{ id: string; title?; description?; stateId?; labelIds?; addLabelIds?; removeLabelIds?; assigneeId?; projectId?; priority?; estimate?; dueDate?; parentId?; archived?; allowZeroEstimate? }>; parallel?; dry_run? }.\nBehavior: Only send fields you intend to change. Empty strings are ignored; priority<0 is ignored; estimate<=0 is ignored unless allowZeroEstimate=true or the issue's team allows zero estimates (auto‑detected). add/removeLabelIds adjusts labels incrementally. This prevents common assignment failures (e.g., invalid estimate=0 when team disallows zero).\nExample: Reassign only → { items: [{ id: 'ISSUE_ID', assigneeId: 'VIEWER_ID' }] }. Returns: per-item results and a summary. Next: 'get_issues' for verification; 'list_issues' to confirm filters/states.",
+      "Update issues in batch (state, labels, assignee, metadata). Supports up to 50 items per call — always batch all updates together. Inputs: { items: Array<{ id: string; title?; description?; stateId?; stateName?; stateType?; labelIds?; labelNames?; addLabelIds?; addLabelNames?; removeLabelIds?; removeLabelNames?; assigneeId?; assigneeName?; assigneeEmail?; projectId?; projectName?; priority?; estimate?; dueDate?; parentId?; archived?; allowZeroEstimate? }>; parallel?; dry_run? }.\n\nHUMAN-READABLE INPUTS (use workspace_metadata to discover valid values):\n- priority: 0-4 or \"Urgent\"/\"High\"/\"Medium\"/\"Low\" (standardized)\n- stateType: \"completed\"/\"started\"/\"canceled\" (standardized)\n- stateName/labelNames/assigneeName/projectName: workspace-specific\n\nBehavior: Only send fields you intend to change. Empty strings ignored; estimate<=0 ignored unless allowZeroEstimate=true. add/removeLabelIds/Names adjust labels incrementally.\nExample: { items: [{ id: 'ABC-123', stateType: 'completed', priority: 'High' }] }. Returns: per-item results. Next: 'get_issues' for verification.",
   },
 
   list_projects: {

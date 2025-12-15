@@ -84,8 +84,9 @@ export const listCyclesTool = defineTool({
       status: (c as unknown as { status?: string })?.status ?? undefined,
     }));
     
-    const hasMore = !!conn.pageInfo?.endCursor;
-    const nextCursor = conn.pageInfo?.endCursor ?? undefined;
+    const pageInfo = conn.pageInfo;
+    const hasMore = pageInfo?.hasNextPage ?? false;
+    const nextCursor = hasMore ? pageInfo?.endCursor ?? undefined : undefined;
 
     // Build query echo
     const query = {
