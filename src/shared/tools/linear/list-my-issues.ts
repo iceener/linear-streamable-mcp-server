@@ -49,11 +49,24 @@ const InputSchema = z.object({
   q: z
     .string()
     .optional()
-    .describe('Free-text search. Splits into tokens, matches title case-insensitively.'),
+    .describe(
+      'Free-text search query. Splits into tokens by whitespace, matches title case-insensitively. ' +
+        'Use 2-4 significant keywords extracted from user intent. Avoid short/common words. ' +
+        "Example: user says 'find my task about the cursor workshop' → q: 'cursor workshop'",
+    ),
   keywords: z
     .array(z.string())
     .optional()
-    .describe('Explicit keywords for title search (OR logic).'),
+    .describe(
+      'Explicit keywords for title search. Uses matchMode logic (default: all must match).',
+    ),
+  matchMode: z
+    .enum(['all', 'any'])
+    .optional()
+    .describe(
+      "How keyword tokens are matched: 'all' requires ALL tokens present in title (precise, default), " +
+        "'any' requires at least ONE token (broad, use for exploratory searches).",
+    ),
 });
 
 export const listMyIssuesTool = defineTool({
@@ -79,13 +92,14 @@ export const listMyIssuesTool = defineTool({
         .map((s) => s.trim())
         .filter(Boolean),
     ];
-    const keywordOr = keywordTokens.length
-      ? { or: keywordTokens.map((t) => ({ title: { containsIgnoreCase: t } })) }
+    const mode = args.matchMode ?? 'all';
+    const keywordFilter = keywordTokens.length
+      ? { [mode === 'all' ? 'and' : 'or']: keywordTokens.map((t) => ({ title: { containsIgnoreCase: t } })) }
       : undefined;
     const baseFilter =
       normalizeIssueFilter(args.filter as Record<string, unknown> | undefined) ?? {};
-    const mergedFilter = keywordOr
-      ? { ...(baseFilter as object), ...(keywordOr as object) }
+    const mergedFilter = keywordFilter
+      ? { ...(baseFilter as object), ...(keywordFilter as object) }
       : baseFilter;
 
     // Single GraphQL query to avoid N+1 requests
@@ -195,6 +209,7 @@ export const listMyIssuesTool = defineTool({
       filter: Object.keys(mergedFilter).length > 0 ? mergedFilter : undefined,
       assignedToMe: true,
       keywords: keywordTokens.length > 0 ? keywordTokens : undefined,
+      matchMode: args.matchMode ?? 'all',
       includeArchived: args.includeArchived,
       orderBy: args.orderBy,
       limit: first,

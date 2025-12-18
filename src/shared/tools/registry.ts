@@ -7,7 +7,6 @@ import type { ZodObject, ZodRawShape } from 'zod';
 import {
   workspaceMetadataTool,
   listIssuesTool,
-  listMyIssuesTool,
   getIssuesTool,
   createIssuesTool,
   updateIssuesTool,
@@ -48,7 +47,6 @@ export const sharedTools: RegisteredTool[] = [
   workspaceMetadataTool as unknown as RegisteredTool,
   // Linear tools - Issues
   listIssuesTool as unknown as RegisteredTool,
-  listMyIssuesTool as unknown as RegisteredTool,
   getIssuesTool as unknown as RegisteredTool,
   createIssuesTool as unknown as RegisteredTool,
   updateIssuesTool as unknown as RegisteredTool,

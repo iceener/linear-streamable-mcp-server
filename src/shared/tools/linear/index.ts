@@ -5,7 +5,6 @@ export { workspaceMetadataTool } from './workspace-metadata.js';
 
 // Issues
 export { listIssuesTool } from './list-issues.js';
-export { listMyIssuesTool } from './list-my-issues.js';
 export { getIssuesTool } from './get-issues.js';
 export { createIssuesTool } from './create-issues.js';
 export { updateIssuesTool } from './update-issues.js';

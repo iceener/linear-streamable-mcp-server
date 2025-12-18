@@ -4,21 +4,21 @@
  */
 
 import { z } from 'zod';
-import { toolsMetadata } from '../../../config/metadata.js';
 import { config } from '../../../config/env.js';
+import { toolsMetadata } from '../../../config/metadata.js';
 import { ListIssuesOutputSchema } from '../../../schemas/outputs.js';
 import { getLinearClient } from '../../../services/linear/client.js';
 import {
-  validateFilter,
-  formatErrorMessage,
   createToolError,
+  formatErrorMessage,
   getZeroResultHints,
+  validateFilter,
 } from '../../../utils/errors.js';
 import { normalizeIssueFilter } from '../../../utils/filters.js';
-import { summarizeList, previewLinesFromItems } from '../../../utils/messages.js';
+import { previewLinesFromItems, summarizeList } from '../../../utils/messages.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
-import type { IssueListItem, DetailLevel } from './shared/index.js';
-import { formatIssuePreviewLine, formatIssueDetails } from './shared/index.js';
+import type { DetailLevel, IssueListItem } from './shared/index.js';
+import { formatIssueDetails, formatIssuePreviewLine } from './shared/index.js';
 
 const InputSchema = z.object({
   limit: z
@@ -34,7 +34,7 @@ const InputSchema = z.object({
     .optional()
     .describe(
       'GraphQL-style IssueFilter. Structure: { field: { comparator: value } }. ' +
-        "Comparators: eq, neq, lt, lte, gt, gte, in, nin, containsIgnoreCase, startsWith, endsWith. " +
+        'Comparators: eq, neq, lt, lte, gt, gte, in, nin, containsIgnoreCase, startsWith, endsWith. ' +
         "Examples: { state: { type: { eq: 'started' } } } for in-progress, " +
         "{ state: { type: { neq: 'completed' } } } for open issues, " +
         "{ assignee: { email: { eqIgnoreCase: 'x@y.com' } } }, " +
@@ -43,27 +43,49 @@ const InputSchema = z.object({
     ),
   teamId: z.string().optional().describe('Filter by team UUID.'),
   projectId: z.string().optional().describe('Filter by project UUID.'),
-  includeArchived: z.boolean().optional().describe('Include archived issues. Default: false.'),
+  includeArchived: z
+    .boolean()
+    .optional()
+    .describe('Include archived issues. Default: false.'),
   orderBy: z
     .enum(['updatedAt', 'createdAt'])
     .optional()
-    .describe("Sort order. Default: 'updatedAt'. Note: To prioritize high-priority issues, use filter: { priority: { lte: 2 } } instead."),
+    .describe(
+      "Sort order. Default: 'updatedAt'. Note: To prioritize high-priority issues, use filter: { priority: { lte: 2 } } instead.",
+    ),
   detail: z
     .enum(['minimal', 'standard', 'full'])
     .optional()
-    .describe("Detail level: 'minimal' (id, title, state), 'standard' (+ priority, assignee, project, due), 'full' (+ labels, description). Default: 'standard'."),
+    .describe(
+      "Detail level: 'minimal' (id, title, state), 'standard' (+ priority, assignee, project, due), 'full' (+ labels, description). Default: 'standard'.",
+    ),
   q: z
     .string()
     .optional()
-    .describe('Free-text search. Splits into tokens, matches title case-insensitively.'),
+    .describe(
+      'Free-text search query. Splits into tokens by whitespace, matches title case-insensitively. ' +
+        'Use 2-4 significant keywords extracted from user intent. Avoid short/common words. ' +
+        "Example: user says 'find my task about the cursor workshop' → q: 'cursor workshop'",
+    ),
   keywords: z
     .array(z.string())
     .optional()
-    .describe('Explicit keywords for title search (OR logic).'),
+    .describe(
+      'Explicit keywords for title search. Uses matchMode logic (default: all must match).',
+    ),
+  matchMode: z
+    .enum(['all', 'any'])
+    .optional()
+    .describe(
+      "How keyword tokens are matched: 'all' requires ALL tokens present in title (precise, default), " +
+        "'any' requires at least ONE token (broad, use for exploratory searches).",
+    ),
   assignedToMe: z
     .boolean()
     .optional()
-    .describe('If true, only show issues assigned to the current viewer. Shortcut for filter.assignee.id.eq with viewer ID.'),
+    .describe(
+      'If true, only show issues assigned to the current viewer. Shortcut for filter.assignee.id.eq with viewer ID.',
+    ),
 });
 
 export const listIssuesTool = defineTool({
@@ -82,12 +104,12 @@ export const listIssuesTool = defineTool({
 
     // Build filter
     let filter = normalizeIssueFilter(args.filter) ?? {};
-    
+
     // Apply teamId filter
     if (args.teamId) {
       filter = { ...filter, team: { id: { eq: args.teamId } } };
     }
-    
+
     // Apply projectId filter
     if (args.projectId) {
       filter = { ...filter, project: { id: { eq: args.projectId } } };
@@ -103,12 +125,14 @@ export const listIssuesTool = defineTool({
     }
 
     // Handle keyword search
-    const keywords = args.keywords ?? (args.q ? args.q.split(/\s+/).filter(Boolean) : []);
+    const keywords =
+      args.keywords ?? (args.q ? args.q.split(/\s+/).filter(Boolean) : []);
     if (keywords.length > 0) {
       const titleFilters = keywords.map((k) => ({
         title: { containsIgnoreCase: k },
       }));
-      filter = { ...filter, or: titleFilters };
+      const mode = args.matchMode ?? 'all';
+      filter = { ...filter, [mode === 'all' ? 'and' : 'or']: titleFilters };
     }
 
     // Validate filter structure before sending to API
@@ -122,7 +146,11 @@ export const listIssuesTool = defineTool({
         return {
           isError: true,
           content: [{ type: 'text', text: formatErrorMessage(error) }],
-          structuredContent: { error: error.code, message: error.message, hint: error.hint },
+          structuredContent: {
+            error: error.code,
+            message: error.message,
+            hint: error.hint,
+          },
         };
       }
     }
@@ -186,10 +214,15 @@ export const listIssuesTool = defineTool({
     ).data?.issues ?? { nodes: [], pageInfo: {} };
 
     const items: IssueListItem[] = (conn.nodes ?? []).map((i) => {
-      const state = (i.state as { id?: string; name?: string } | undefined) ?? undefined;
-      const project = (i.project as { id?: string; name?: string } | undefined) ?? undefined;
-      const assignee = (i.assignee as { id?: string; name?: string } | undefined) ?? undefined;
-      const labelsConn = i.labels as { nodes?: Array<{ id: string; name: string }> } | undefined;
+      const state =
+        (i.state as { id?: string; name?: string } | undefined) ?? undefined;
+      const project =
+        (i.project as { id?: string; name?: string } | undefined) ?? undefined;
+      const assignee =
+        (i.assignee as { id?: string; name?: string } | undefined) ?? undefined;
+      const labelsConn = i.labels as
+        | { nodes?: Array<{ id: string; name: string }> }
+        | undefined;
       const labels = (labelsConn?.nodes ?? []).map((l) => ({ id: l.id, name: l.name }));
       const archivedAtRaw = (i.archivedAt as string | null | undefined) ?? undefined;
 
@@ -217,7 +250,7 @@ export const listIssuesTool = defineTool({
 
     const pageInfo = conn.pageInfo ?? {};
     const hasMore = pageInfo.hasNextPage ?? false;
-    const nextCursor = hasMore ? pageInfo.endCursor ?? undefined : undefined;
+    const nextCursor = hasMore ? (pageInfo.endCursor ?? undefined) : undefined;
 
     // Build query echo for LLM context
     const query = {
@@ -226,6 +259,7 @@ export const listIssuesTool = defineTool({
       projectId: args.projectId,
       assignedToMe: args.assignedToMe,
       keywords: keywords.length > 0 ? keywords : undefined,
+      matchMode: args.matchMode ?? 'all',
       includeArchived: args.includeArchived,
       orderBy: args.orderBy,
       limit,
@@ -243,11 +277,14 @@ export const listIssuesTool = defineTool({
     const zeroReasonHints =
       items.length === 0
         ? getZeroResultHints({
-            hasStateFilter: !!(args.filter as Record<string, unknown> | undefined)?.state,
-            hasDateFilter: !!(args.filter as Record<string, unknown> | undefined)?.updatedAt ||
+            hasStateFilter: !!(args.filter as Record<string, unknown> | undefined)
+              ?.state,
+            hasDateFilter:
+              !!(args.filter as Record<string, unknown> | undefined)?.updatedAt ||
               !!(args.filter as Record<string, unknown> | undefined)?.createdAt,
             hasTeamFilter: !!args.teamId,
-            hasAssigneeFilter: !!args.assignedToMe ||
+            hasAssigneeFilter:
+              !!args.assignedToMe ||
               !!(args.filter as Record<string, unknown> | undefined)?.assignee,
             hasProjectFilter: !!args.projectId,
             hasKeywordFilter: !!args.q || (args.keywords?.length ?? 0) > 0,
@@ -257,7 +294,9 @@ export const listIssuesTool = defineTool({
     // Build meta with next steps
     const meta = {
       nextSteps: [
-        ...(hasMore ? [`Call again with cursor="${nextCursor}" to fetch more results.`] : []),
+        ...(hasMore
+          ? [`Call again with cursor="${nextCursor}" to fetch more results.`]
+          : []),
         'Use get_issues with specific IDs for detailed info.',
         'Use update_issues to modify state, assignee, or labels.',
       ],
@@ -289,13 +328,11 @@ export const listIssuesTool = defineTool({
       nextCursor,
       previewLines: preview,
       zeroReasonHints,
-      nextSteps: hasMore
-        ? [`Pass cursor '${nextCursor}' to fetch more.`]
-        : undefined,
+      nextSteps: hasMore ? [`Pass cursor '${nextCursor}' to fetch more.`] : undefined,
     });
 
     const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text }];
-    
+
     if (config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
       parts.push({ type: 'text', text: JSON.stringify(structured) });
     }
@@ -303,28 +340,3 @@ export const listIssuesTool = defineTool({
     return { content: parts, structuredContent: structured };
   },
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

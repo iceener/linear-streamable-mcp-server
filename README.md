@@ -370,7 +370,6 @@ Update issues in batch (state, labels, assignee, metadata).
 
 ### Other Tools
 
-- `list_my_issues` — Issues assigned to current user
 - `get_issues` — Fetch issues by ID (batch)
 - `list_projects` / `create_projects` / `update_projects` — Manage projects
 - `list_teams` / `list_users` — Discover workspace structure
@@ -387,10 +386,11 @@ Update issues in batch (state, labels, assignee, metadata).
 // First, get viewer info
 { "name": "workspace_metadata", "arguments": { "include": ["profile"] } }
 
-// Then list issues
+// Then list issues assigned to me
 {
-  "name": "list_my_issues",
+  "name": "list_issues",
   "arguments": {
+    "assignedToMe": true,
     "filter": { "dueDate": { "eq": "2025-08-15" } },
     "orderBy": "updatedAt",
     "limit": 20
@@ -400,7 +400,7 @@ Update issues in batch (state, labels, assignee, metadata).
 
 **Response:**
 ```
-My issues: 1 (limit 20). Preview:
+Issues: 1 (limit 20). Preview:
 - [OVE-142 — Publish release notes](https://linear.app/.../OVE-142) — state Done; due 2025-08-15
 ```
 

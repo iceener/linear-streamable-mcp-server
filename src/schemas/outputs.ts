@@ -82,6 +82,7 @@ export const ListIssuesQuerySchema = z
     projectId: z.string().optional(),
     assignedToMe: z.boolean().optional(),
     keywords: z.array(z.string()).optional(),
+    matchMode: z.enum(['all', 'any']).optional(),
     includeArchived: z.boolean().optional(),
     orderBy: z.string().optional(),
     limit: z.number(),

@@ -47,7 +47,7 @@ Filtering (list_issues)
   - Assignee email: { assignee: { email: { eqIgnoreCase: "name@acme.com" } } }
   - Title case-insensitive contains: { title: { containsIgnoreCase: "search" } }
   - Labels (use names from your workspace): { labels: { name: { in: ["LabelA", "LabelB"] } } }
-- Or use q/keywords to match title tokens automatically (case-insensitive OR of tokens).
+- Or use q/keywords for keyword search (default matchMode='all' requires ALL tokens; use 'any' for broad search).
 - Use workspace_metadata first to discover team/project/label/user names and IDs.
 
 Pagination
@@ -73,7 +73,7 @@ export const toolsMetadata = {
     name: 'list_issues',
     title: 'List Issues',
     description:
-      'List issues with filtering. Inputs: teamId?, projectId?, filter?, q?/keywords?, includeArchived?, orderBy?(updatedAt|createdAt), detail?(minimal|standard|full), limit?, cursor?, assignedToMe?.\n\n⚠️ orderBy only supports updatedAt or createdAt. DO NOT use orderBy:"priority" - use filter instead!\n\nFILTERING:\n- High priority: filter: { priority: { lte: 2 } } (1=Urgent, 2=High, 3=Medium, 4=Low)\n- Active issues: filter: { state: { type: { neq: \'completed\' } } }\n- In progress: filter: { state: { type: { eq: \'started\' } } }\n- My issues: assignedToMe: true\n\nDETAIL LEVELS: minimal (id,title,state), standard (default, +priority,assignee,project), full (+labels,description).\n\nReturns: { items[], pagination, meta }.',
+      'List issues with filtering. Inputs: teamId?, projectId?, filter?, q?, keywords?, matchMode?, includeArchived?, orderBy?(updatedAt|createdAt), detail?(minimal|standard|full), limit?, cursor?, assignedToMe?.\n\n⚠️ orderBy only supports updatedAt or createdAt. DO NOT use orderBy:"priority" - use filter instead!\n\nKEYWORD SEARCH (q/keywords):\n- q: Extract 2-4 significant keywords from user intent. Avoid short/common words.\n- matchMode: \'all\' (default, precise) requires ALL tokens; \'any\' (broad) requires at least ONE.\n- Example: user says "find cursor workshop task" → q: "cursor workshop"\n\nFILTERING:\n- High priority: filter: { priority: { lte: 2 } } (1=Urgent, 2=High, 3=Medium, 4=Low)\n- Active issues: filter: { state: { type: { neq: \'completed\' } } }\n- In progress: filter: { state: { type: { eq: \'started\' } } }\n- My issues: assignedToMe: true\n\nDETAIL LEVELS: minimal (id,title,state), standard (default, +priority,assignee,project), full (+labels,description).\n\nReturns: { items[], pagination, meta }.',
   },
 
   get_issues: {
@@ -81,13 +81,6 @@ export const toolsMetadata = {
     title: 'Get Issues (Batch)',
     description:
       "Fetch detailed issues in batch by ids (UUIDs or short ids like ENG-123). Inputs: { ids: string[] }.\nReturns: { results: Array<{ index, ok, id?, identifier?, issue? }>, summary }. Each issue includes assignee, state, project, labels, attachments, and branchName when available. Next: Call 'update_issues' to modify fields or 'list_issues' to discover more.",
-  },
-
-  list_my_issues: {
-    name: 'list_my_issues',
-    title: 'List My Issues',
-    description:
-      "List issues assigned to you. Inputs: filter?, q?/keywords?, includeArchived?, orderBy?(updatedAt|createdAt), detail?(minimal|standard|full), limit?, cursor?.\n\n⚠️ orderBy only supports updatedAt or createdAt. DO NOT use orderBy:\"priority\" - use filter instead!\n\nFILTERING:\n- High priority: filter: { priority: { lte: 2 } } (1=Urgent, 2=High)\n- Active issues: filter: { state: { type: { neq: 'completed' } } }\n- In progress: filter: { state: { type: { eq: 'started' } } }\n\nDETAIL LEVELS: minimal (id,title,state), standard (default), full (+labels,description).\n\nReturns: Same as list_issues but pre-filtered to your assignments.",
   },
 
   create_issues: {

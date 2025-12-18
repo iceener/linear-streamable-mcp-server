@@ -45,7 +45,7 @@ export const ERROR_HINTS: Record<ErrorCode, string> = {
   VALIDATION_ERROR:
     'Check the input format matches the schema. See tool description for examples.',
   FILTER_INVALID:
-    'Filter syntax is incorrect. Valid comparators: eq, neq, in, nin, lt, lte, gt, gte, contains, containsIgnoreCase. Example: { state: { type: { eq: "started" } } }',
+    'Filter syntax is incorrect. Valid comparators include: eq, neq, in, nin, lt, lte, gt, gte, contains, containsIgnoreCase, startsWith, endsWith, eqIgnoreCase, neqIgnoreCase, null. Example: { state: { type: { eq: "started" } } }',
   CYCLES_DISABLED:
     'This team has cycles disabled. Alternatives: use list_projects for milestones, or labels to group issues by phase. Check workspace_metadata for teams with cyclesEnabled=true.',
   LINEAR_API_ERROR:
@@ -133,7 +133,16 @@ export const VALID_COMPARATORS = [
   'gt',
   'gte',
   'contains',
+  'notContains',
   'containsIgnoreCase',
+  'notContainsIgnoreCase',
+  'startsWith',
+  'notStartsWith',
+  'endsWith',
+  'notEndsWith',
+  'eqIgnoreCase',
+  'neqIgnoreCase',
+  'null',
 ] as const;
 
 /**
