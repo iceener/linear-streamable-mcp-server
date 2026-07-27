@@ -3,18 +3,18 @@
  * Verifies: project listing, creation, updates, filtering, output shapes.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  listProjectsTool,
   createProjectsTool,
+  listProjectsTool,
   updateProjectsTool,
 } from '../../src/shared/tools/linear/projects.js';
+import type { ToolContext } from '../../src/shared/tools/types.js';
 import {
   createMockLinearClient,
-  resetMockCalls,
   type MockLinearClient,
+  resetMockCalls,
 } from '../mocks/linear-client.js';
-import type { ToolContext } from '../../src/shared/tools/types.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
@@ -24,7 +24,7 @@ let mockClient: MockLinearClient;
 
 const baseContext: ToolContext = {
   sessionId: 'test-session',
-  providerToken: 'test-token',
+  linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
 
@@ -164,7 +164,9 @@ describe('list_projects tool', () => {
       const items = structured.items as Array<Record<string, unknown>>;
 
       // At least one project should have metadata
-      const hasMetadata = items.some((p) => p.leadId !== undefined || p.teamId !== undefined);
+      const hasMetadata = items.some(
+        (p) => p.leadId !== undefined || p.teamId !== undefined,
+      );
       expect(hasMetadata).toBe(true);
     });
   });
@@ -269,11 +271,7 @@ describe('create_projects tool', () => {
     it('batch creates multiple projects', async () => {
       const result = await createProjectsTool.handler(
         {
-          items: [
-            { name: 'Project A' },
-            { name: 'Project B' },
-            { name: 'Project C' },
-          ],
+          items: [{ name: 'Project A' }, { name: 'Project B' }, { name: 'Project C' }],
         },
         baseContext,
       );
@@ -497,4 +495,3 @@ describe('projects common workflows', () => {
     );
   });
 });
-

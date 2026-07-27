@@ -30,10 +30,18 @@ function formatLog(level: LogLevel, logger: string, data: LogData): string {
 
 function sanitize(data: LogData): LogData {
   const sanitized = { ...data };
-  const sensitiveKeys = ['password', 'token', 'secret', 'key', 'authorization', 'access_token', 'refresh_token'];
-  
+  const sensitiveKeys = [
+    'password',
+    'token',
+    'secret',
+    'key',
+    'authorization',
+    'access_token',
+    'refresh_token',
+  ];
+
   for (const key of Object.keys(sanitized)) {
-    if (sensitiveKeys.some(sk => key.toLowerCase().includes(sk))) {
+    if (sensitiveKeys.some((sk) => key.toLowerCase().includes(sk))) {
       const value = sanitized[key];
       if (typeof value === 'string' && value.length > 8) {
         sanitized[key] = `${value.substring(0, 8)}...`;
@@ -42,7 +50,7 @@ function sanitize(data: LogData): LogData {
       }
     }
   }
-  
+
   return sanitized;
 }
 
@@ -75,5 +83,3 @@ export const sharedLogger = {
     }
   },
 };
-
-

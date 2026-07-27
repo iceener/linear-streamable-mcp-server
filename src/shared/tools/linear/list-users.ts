@@ -2,12 +2,12 @@
  * List Users tool.
  */
 
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { toolsMetadata } from '../../../config/metadata.js';
 import { ListUsersOutputSchema } from '../../../schemas/outputs.js';
 import { getLinearClient } from '../../../services/linear/client.js';
 import { mapUserNodeToListItem } from '../../../utils/mappers.js';
-import { summarizeList, previewLinesFromItems } from '../../../utils/messages.js';
+import { previewLinesFromItems, summarizeList } from '../../../utils/messages.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
 
 const InputSchema = z.object({
@@ -20,6 +20,7 @@ export const listUsersTool = defineTool({
   title: toolsMetadata.list_users.title,
   description: toolsMetadata.list_users.description,
   inputSchema: InputSchema,
+  outputSchema: ListUsersOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -34,7 +35,9 @@ export const listUsersTool = defineTool({
       queryArgs.after = args.cursor;
     }
 
-    const connection = await client.users(queryArgs as Parameters<typeof client.users>[0]);
+    const connection = await client.users(
+      queryArgs as Parameters<typeof client.users>[0],
+    );
     const items = connection.nodes.map(mapUserNodeToListItem);
     const pageInfo = connection.pageInfo;
 
@@ -72,7 +75,8 @@ export const listUsersTool = defineTool({
     const preview = previewLinesFromItems(
       items as unknown as Record<string, unknown>[],
       (u) => {
-        const name = (u.displayName as string) ?? (u.name as string) ?? (u.id as string);
+        const name =
+          (u.displayName as string) ?? (u.name as string) ?? (u.id as string);
         const email = u.email as string | undefined;
         return `${name}${email ? ` <${email}>` : ''} → ${u.id as string}`;
       },
@@ -93,10 +97,3 @@ export const listUsersTool = defineTool({
     };
   },
 });
-
-
-
-
-
-
-

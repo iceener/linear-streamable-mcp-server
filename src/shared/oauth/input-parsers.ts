@@ -1,7 +1,12 @@
 // Shared OAuth input parsing for both Node.js and Cloudflare Workers
 
 import type { UnifiedConfig } from '../config/env.js';
-import type { AuthorizeInput, OAuthConfig, ProviderConfig, TokenInput } from './types.js';
+import type {
+  AuthorizeInput,
+  OAuthConfig,
+  ProviderConfig,
+  TokenInput,
+} from './types.js';
 
 /**
  * Parse authorization request from URL search params.
@@ -20,7 +25,10 @@ export function parseAuthorizeInput(url: URL, sessionId?: string): AuthorizeInpu
 /**
  * Parse callback request from URL search params.
  */
-export function parseCallbackInput(url: URL): { code: string | null; state: string | null } {
+export function parseCallbackInput(url: URL): {
+  code: string | null;
+  state: string | null;
+} {
   return {
     code: url.searchParams.get('code'),
     state: url.searchParams.get('state'),
@@ -113,5 +121,3 @@ export function buildFlowOptions(
     tokenEndpointPath: overrides.tokenEndpointPath ?? '/api/token',
   };
 }
-
-

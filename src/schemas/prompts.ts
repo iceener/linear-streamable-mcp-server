@@ -1,6 +1,6 @@
 /**
  * Prompt argument schemas for Linear MCP.
- * 
+ *
  * Add Linear-specific prompt schemas here when needed, e.g.:
  * - SprintSummaryArgs
  * - TriageArgs

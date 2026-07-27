@@ -2,18 +2,30 @@
  * Create Issues tool - batch create issues in Linear.
  */
 
-import { z } from 'zod';
-import { toolsMetadata } from '../../../config/metadata.js';
+import { z } from 'zod/v4';
 import { config } from '../../../config/env.js';
-import { CreateIssuesOutputSchema } from '../../../schemas/outputs.js';
+import { toolsMetadata } from '../../../config/metadata.js';
+import {
+  type BatchResultSchema,
+  CreateIssuesOutputSchema,
+} from '../../../schemas/outputs.js';
 import { getLinearClient } from '../../../services/linear/client.js';
-import { makeConcurrencyGate, withRetry, delay } from '../../../utils/limits.js';
+import { delay, makeConcurrencyGate, withRetry } from '../../../utils/limits.js';
 import { logger } from '../../../utils/logger.js';
 import { summarizeBatch } from '../../../utils/messages.js';
+import {
+  resolveLabels,
+  resolvePriority,
+  resolveProject,
+  resolveState,
+} from '../../../utils/resolvers.js';
 import { resolveAssignee } from '../../../utils/user-resolver.js';
-import { resolvePriority, resolveState, resolveLabels, resolveProject } from '../../../utils/resolvers.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
-import { createTeamSettingsCache, validateEstimate, validatePriority } from './shared/index.js';
+import {
+  createTeamSettingsCache,
+  validateEstimate,
+  validatePriority,
+} from './shared/index.js';
 
 const IssueCreateItem = z.object({
   teamId: z.string().describe('Team UUID. Required.'),
@@ -27,17 +39,23 @@ const IssueCreateItem = z.object({
   stateName: z
     .string()
     .optional()
-    .describe('State name from your workspace. Use workspace_metadata to see available names.'),
+    .describe(
+      'State name from your workspace. Use workspace_metadata to see available names.',
+    ),
   stateType: z
     .enum(['backlog', 'unstarted', 'started', 'completed', 'canceled'])
     .optional()
-    .describe('State type. Finds first matching state. Use when you want "any completed state".'),
+    .describe(
+      'State type. Finds first matching state. Use when you want "any completed state".',
+    ),
   // Labels - UUIDs or names
   labelIds: z.array(z.string()).optional().describe('Label UUIDs to attach.'),
   labelNames: z
     .array(z.string())
     .optional()
-    .describe('Label names from your workspace. Use workspace_metadata to see available labels.'),
+    .describe(
+      'Label names from your workspace. Use workspace_metadata to see available labels.',
+    ),
   // Assignee - UUID, name, or email
   assigneeId: z
     .string()
@@ -46,7 +64,9 @@ const IssueCreateItem = z.object({
   assigneeName: z
     .string()
     .optional()
-    .describe('User name (fuzzy match). Partial names work. Use workspace_metadata to list users.'),
+    .describe(
+      'User name (fuzzy match). Partial names work. Use workspace_metadata to list users.',
+    ),
   assigneeEmail: z
     .string()
     .optional()
@@ -61,7 +81,20 @@ const IssueCreateItem = z.object({
   priority: z
     .union([
       z.number().int().min(0).max(4),
-      z.enum(['None', 'Urgent', 'High', 'Medium', 'Normal', 'Low', 'none', 'urgent', 'high', 'medium', 'normal', 'low']),
+      z.enum([
+        'None',
+        'Urgent',
+        'High',
+        'Medium',
+        'Normal',
+        'Low',
+        'none',
+        'urgent',
+        'high',
+        'medium',
+        'normal',
+        'low',
+      ]),
     ])
     .optional()
     .describe('Priority: 0-4 or "None"/"Urgent"/"High"/"Medium"/"Low".'),
@@ -85,6 +118,7 @@ export const createIssuesTool = defineTool({
   title: toolsMetadata.create_issues.title,
   description: toolsMetadata.create_issues.description,
   inputSchema: InputSchema,
+  outputSchema: CreateIssuesOutputSchema,
   annotations: {
     readOnlyHint: false,
     destructiveHint: false,
@@ -93,13 +127,23 @@ export const createIssuesTool = defineTool({
   handler: async (args, context: ToolContext): Promise<ToolResult> => {
     // Handle dry_run mode
     if (args.dry_run) {
-      const validated = args.items.map((it, index) => ({
+      const validated = args.items.map((item, index) => ({
+        input: { title: item.title, teamId: item.teamId },
+        success: true,
+        validated: true,
         index,
         ok: true,
-        title: it.title,
-        teamId: it.teamId,
-        validated: true,
       }));
+      const structured = CreateIssuesOutputSchema.parse({
+        results: validated,
+        summary: {
+          total: args.items.length,
+          succeeded: args.items.length,
+          failed: 0,
+          ok: args.items.length,
+        },
+        dry_run: true,
+      });
       return {
         content: [
           {
@@ -107,27 +151,18 @@ export const createIssuesTool = defineTool({
             text: `Dry run: ${args.items.length} issue(s) validated successfully. No changes made.`,
           },
         ],
-        structuredContent: {
-          results: validated,
-          summary: { ok: args.items.length, failed: 0 },
-          dry_run: true,
-        },
+        structuredContent: structured,
       };
     }
 
     const client = await getLinearClient(context);
-    const gate = makeConcurrencyGate(config.CONCURRENCY_LIMIT);
+    const gate = makeConcurrencyGate(
+      context.concurrencyLimit ?? config.CONCURRENCY_LIMIT,
+    );
     const { items } = args;
     const teamAllowZeroCache = createTeamSettingsCache();
 
-    const results: {
-      index: number;
-      ok: boolean;
-      id?: string;
-      identifier?: string;
-      error?: string;
-      code?: string;
-    }[] = [];
+    const results: Array<z.input<typeof BatchResultSchema>> = [];
 
     for (let i = 0; i < items.length; i++) {
       const it = items[i] as (typeof items)[number];
@@ -151,9 +186,18 @@ export const createIssuesTool = defineTool({
           });
           if (!stateResult.success) {
             results.push({
-              input: { title: it.title, teamId: it.teamId, stateName: it.stateName, stateType: it.stateType },
+              input: {
+                title: it.title,
+                teamId: it.teamId,
+                stateName: it.stateName,
+                stateType: it.stateType,
+              },
               success: false,
-              error: { code: 'STATE_RESOLUTION_FAILED', message: stateResult.error, suggestions: stateResult.suggestions },
+              error: {
+                code: 'STATE_RESOLUTION_FAILED',
+                message: stateResult.error,
+                suggestions: stateResult.suggestions,
+              },
               index: i,
               ok: false,
             });
@@ -171,7 +215,11 @@ export const createIssuesTool = defineTool({
             results.push({
               input: { title: it.title, teamId: it.teamId, labelNames: it.labelNames },
               success: false,
-              error: { code: 'LABEL_RESOLUTION_FAILED', message: labelsResult.error, suggestions: labelsResult.suggestions },
+              error: {
+                code: 'LABEL_RESOLUTION_FAILED',
+                message: labelsResult.error,
+                suggestions: labelsResult.suggestions,
+              },
               index: i,
               ok: false,
             });
@@ -187,9 +235,17 @@ export const createIssuesTool = defineTool({
           const projectResult = await resolveProject(client, it.projectName);
           if (!projectResult.success) {
             results.push({
-              input: { title: it.title, teamId: it.teamId, projectName: it.projectName },
+              input: {
+                title: it.title,
+                teamId: it.teamId,
+                projectName: it.projectName,
+              },
               success: false,
-              error: { code: 'PROJECT_RESOLUTION_FAILED', message: projectResult.error, suggestions: projectResult.suggestions },
+              error: {
+                code: 'PROJECT_RESOLUTION_FAILED',
+                message: projectResult.error,
+                suggestions: projectResult.suggestions,
+              },
               index: i,
               ok: false,
             });
@@ -208,12 +264,17 @@ export const createIssuesTool = defineTool({
         if (!assigneeResult.success && assigneeResult.error) {
           // User resolution failed - report error but continue batch
           results.push({
-            input: { title: it.title, teamId: it.teamId, assigneeName: it.assigneeName, assigneeEmail: it.assigneeEmail },
+            input: {
+              title: it.title,
+              teamId: it.teamId,
+              assigneeName: it.assigneeName,
+              assigneeEmail: it.assigneeEmail,
+            },
             success: false,
             error: {
               code: assigneeResult.error.code,
               message: assigneeResult.error.message,
-              suggestions: assigneeResult.error.suggestions,
+              suggestions: [assigneeResult.error.hint],
             },
             // Legacy
             index: i,
@@ -242,7 +303,11 @@ export const createIssuesTool = defineTool({
             results.push({
               input: { title: it.title, teamId: it.teamId, priority: it.priority },
               success: false,
-              error: { code: 'PRIORITY_INVALID', message: priorityResult.error, suggestions: priorityResult.suggestions },
+              error: {
+                code: 'PRIORITY_INVALID',
+                message: priorityResult.error,
+                suggestions: priorityResult.suggestions,
+              },
               index: i,
               ok: false,
             });
@@ -310,7 +375,12 @@ export const createIssuesTool = defineTool({
 
         results.push({
           // Echo input for context
-          input: { title: it.title, teamId: it.teamId, assigneeName: it.assigneeName, assigneeEmail: it.assigneeEmail },
+          input: {
+            title: it.title,
+            teamId: it.teamId,
+            assigneeName: it.assigneeName,
+            assigneeEmail: it.assigneeEmail,
+          },
           success: payload.success ?? true,
           id: (issue as unknown as { id?: string })?.id,
           identifier: (issue as unknown as { identifier?: string })?.identifier,
@@ -327,15 +397,20 @@ export const createIssuesTool = defineTool({
         });
         results.push({
           // Echo input for context
-          input: { title: it.title, teamId: it.teamId, assigneeName: it.assigneeName, assigneeEmail: it.assigneeEmail },
+          input: {
+            title: it.title,
+            teamId: it.teamId,
+            assigneeName: it.assigneeName,
+            assigneeEmail: it.assigneeEmail,
+          },
           success: false,
           error: {
             code: 'LINEAR_CREATE_ERROR',
             message: (error as Error).message,
             suggestions: [
-              "Verify teamId with workspace_metadata.",
-              "Check that stateId exists in workflowStatesByTeam.",
-              "Use list_users to find valid assigneeId.",
+              'Verify teamId with workspace_metadata.',
+              'Check that stateId exists in workflowStatesByTeam.',
+              'Use list_users to find valid assigneeId.',
             ],
             retryable: false,
           },
@@ -363,8 +438,8 @@ export const createIssuesTool = defineTool({
       'Use update_issues to modify state, assignee, or labels.',
     ];
     if (failed > 0) {
-      metaNextSteps.push("Check error.suggestions for recovery hints.");
-      metaNextSteps.push("Use workspace_metadata to verify IDs.");
+      metaNextSteps.push('Check error.suggestions for recovery hints.');
+      metaNextSteps.push('Use workspace_metadata to verify IDs.');
     }
 
     const meta = {
@@ -384,9 +459,13 @@ export const createIssuesTool = defineTool({
         const err = r.error;
         if (typeof err === 'object' && err !== null) {
           const errObj = err as { message?: string; code?: string };
-          return { index: r.index, error: errObj.message ?? String(err), code: errObj.code };
+          return {
+            index: r.index ?? -1,
+            error: errObj.message ?? String(err),
+            code: errObj.code,
+          };
         }
-        return { index: r.index, error: String(err ?? ''), code: undefined };
+        return { index: r.index ?? -1, error: String(err ?? ''), code: undefined };
       });
 
     // Compose a richer message with links for created items
@@ -418,7 +497,8 @@ export const createIssuesTool = defineTool({
     for (const r of results.filter((r) => r.ok)) {
       try {
         const issue = await client.issue(r.id ?? (r.identifier as string));
-        const idf = (issue as unknown as { identifier?: string })?.identifier ?? issue.id;
+        const idf =
+          (issue as unknown as { identifier?: string })?.identifier ?? issue.id;
         const url = (issue as unknown as { url?: string })?.url as string | undefined;
         const title = issue.title;
 
@@ -426,15 +506,19 @@ export const createIssuesTool = defineTool({
         let projectName: string | undefined;
         let assigneeName: string | undefined;
         try {
-          const s = await (issue as unknown as { state?: Promise<{ name?: string }> }).state;
+          const s = await (issue as unknown as { state?: Promise<{ name?: string }> })
+            .state;
           stateName = s?.name ?? undefined;
         } catch {}
         try {
-          const p = await (issue as unknown as { project?: Promise<{ name?: string }> }).project;
+          const p = await (issue as unknown as { project?: Promise<{ name?: string }> })
+            .project;
           projectName = p?.name ?? undefined;
         } catch {}
         try {
-          const a = await (issue as unknown as { assignee?: Promise<{ name?: string }> }).assignee;
+          const a = await (
+            issue as unknown as { assignee?: Promise<{ name?: string }> }
+          ).assignee;
           assigneeName = a?.name ?? undefined;
         } catch {}
 
@@ -459,7 +543,8 @@ export const createIssuesTool = defineTool({
         if (dueDate) partsLine.push(`due ${dueDate}`);
         if (assigneeName) partsLine.push(`assignee ${assigneeName}`);
 
-        const line = partsLine.length > 0 ? `${header} — ${partsLine.join('; ')}` : header;
+        const line =
+          partsLine.length > 0 ? `${header} — ${partsLine.join('; ')}` : header;
         detailLines.push(`- ${line}`);
       } catch {}
     }
@@ -474,17 +559,10 @@ export const createIssuesTool = defineTool({
 
     const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text }];
 
-    if (config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
+    if (context.includeJsonInContent ?? config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
       parts.push({ type: 'text', text: JSON.stringify(structured) });
     }
 
     return { content: parts, structuredContent: structured };
   },
 });
-
-
-
-
-
-
-

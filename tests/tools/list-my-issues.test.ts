@@ -3,14 +3,14 @@
  * Verifies: filtering current user's issues, state filters, output shape.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { listMyIssuesTool } from '../../src/shared/tools/linear/list-my-issues.js';
+import type { ToolContext } from '../../src/shared/tools/types.js';
 import {
   createMockLinearClient,
-  resetMockCalls,
   type MockLinearClient,
+  resetMockCalls,
 } from '../mocks/linear-client.js';
-import type { ToolContext } from '../../src/shared/tools/types.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
@@ -20,7 +20,7 @@ let mockClient: MockLinearClient;
 
 const baseContext: ToolContext = {
   sessionId: 'test-session',
-  providerToken: 'test-token',
+  linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
 
@@ -114,7 +114,7 @@ describe('list_my_issues handler', () => {
 
     const call = mockClient._calls.rawRequest[0];
     const filter = call.variables?.filter as Record<string, unknown>;
-    expect(filter.or).toBeDefined();
+    expect(filter.and).toBeDefined();
   });
 
   it('respects limit parameter', async () => {
@@ -127,7 +127,10 @@ describe('list_my_issues handler', () => {
   });
 
   it('supports pagination with cursor', async () => {
-    const result = await listMyIssuesTool.handler({ cursor: 'test-cursor' }, baseContext);
+    const result = await listMyIssuesTool.handler(
+      { cursor: 'test-cursor' },
+      baseContext,
+    );
 
     expect(result.isError).toBeFalsy();
 
@@ -136,7 +139,10 @@ describe('list_my_issues handler', () => {
   });
 
   it('supports ordering by updatedAt', async () => {
-    const result = await listMyIssuesTool.handler({ orderBy: 'updatedAt' }, baseContext);
+    const result = await listMyIssuesTool.handler(
+      { orderBy: 'updatedAt' },
+      baseContext,
+    );
 
     expect(result.isError).toBeFalsy();
 
@@ -144,13 +150,9 @@ describe('list_my_issues handler', () => {
     expect(call.variables?.orderBy).toBe('updatedAt');
   });
 
-  it('supports ordering by priority', async () => {
-    const result = await listMyIssuesTool.handler({ orderBy: 'priority' }, baseContext);
-
-    expect(result.isError).toBeFalsy();
-
-    const call = mockClient._calls.rawRequest[0];
-    expect(call.variables?.orderBy).toBe('priority');
+  it('rejects unsupported priority ordering', () => {
+    const result = listMyIssuesTool.inputSchema.safeParse({ orderBy: 'priority' });
+    expect(result.success).toBe(false);
   });
 });
 
@@ -195,7 +197,7 @@ describe('list_my_issues common workflows', () => {
     );
 
     expect(result.isError).toBeFalsy();
-    
+
     // Uses assignedIssues query
     const call = mockClient._calls.rawRequest[0];
     expect(call.query).toContain('assignedIssues');
@@ -229,4 +231,3 @@ describe('list_my_issues common workflows', () => {
     expect(filter.state).toEqual({ type: { eq: 'completed' } });
   });
 });
-

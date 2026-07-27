@@ -84,7 +84,13 @@ export function formatPriorityName(priority: number): string {
 
 export type StateType = 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled';
 
-const VALID_STATE_TYPES: StateType[] = ['backlog', 'unstarted', 'started', 'completed', 'canceled'];
+const VALID_STATE_TYPES: StateType[] = [
+  'backlog',
+  'unstarted',
+  'started',
+  'completed',
+  'canceled',
+];
 
 export interface StateInfo {
   id: string;
@@ -129,15 +135,20 @@ export async function resolveState(
 
       // Fuzzy match suggestions
       const similar = stateList
-        .filter((s) => s.name.toLowerCase().includes(normalized) || normalized.includes(s.name.toLowerCase()))
+        .filter(
+          (s) =>
+            s.name.toLowerCase().includes(normalized) ||
+            normalized.includes(s.name.toLowerCase()),
+        )
         .map((s) => s.name);
 
       return {
         success: false,
         error: `State "${input.stateName}" not found in team`,
-        suggestions: similar.length > 0
-          ? [`Did you mean: ${similar.join(', ')}?`]
-          : [`Available states: ${stateList.map((s) => s.name).join(', ')}`],
+        suggestions:
+          similar.length > 0
+            ? [`Did you mean: ${similar.join(', ')}?`]
+            : [`Available states: ${stateList.map((s) => s.name).join(', ')}`],
       };
     }
 
@@ -158,7 +169,9 @@ export async function resolveState(
       return {
         success: false,
         error: `No state with type "${input.stateType}" found in team`,
-        suggestions: [`Available types in this team: ${[...new Set(stateList.map((s) => s.type))].join(', ')}`],
+        suggestions: [
+          `Available types in this team: ${[...new Set(stateList.map((s) => s.type))].join(', ')}`,
+        ],
       };
     }
 
@@ -174,7 +187,10 @@ export async function resolveState(
 /**
  * Get team ID from an issue (for update operations)
  */
-export async function getIssueTeamId(client: LinearClient, issueId: string): Promise<string | null> {
+export async function getIssueTeamId(
+  client: LinearClient,
+  issueId: string,
+): Promise<string | null> {
   try {
     const issue = await client.issue(issueId);
     const team = await issue.team;
@@ -256,9 +272,7 @@ export async function resolveProject(
     const projects = await client.projects({ first: 100 });
     const normalized = projectName.toLowerCase().trim();
 
-    const exactMatch = projects.nodes.find(
-      (p) => p.name.toLowerCase() === normalized,
-    );
+    const exactMatch = projects.nodes.find((p) => p.name.toLowerCase() === normalized);
 
     if (exactMatch) {
       return { success: true, value: exactMatch.id };
@@ -273,9 +287,10 @@ export async function resolveProject(
     return {
       success: false,
       error: `Project "${projectName}" not found`,
-      suggestions: similar.length > 0
-        ? [`Similar projects: ${similar.join(', ')}`]
-        : ['Use workspace_metadata to list available projects'],
+      suggestions:
+        similar.length > 0
+          ? [`Similar projects: ${similar.join(', ')}`]
+          : ['Use workspace_metadata to list available projects'],
     };
   } catch (e) {
     return {
@@ -284,4 +299,3 @@ export async function resolveProject(
     };
   }
 }
-

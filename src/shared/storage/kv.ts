@@ -1,15 +1,8 @@
 // Cloudflare KV storage with encryption support
 // Provider-agnostic version from Spotify MCP
 
-import type {
-  ProviderTokens,
-  RsRecord,
-  SessionRecord,
-  SessionStore,
-  TokenStore,
-  Transaction,
-} from './interface.js';
-import { MemorySessionStore, MemoryTokenStore } from './memory.js';
+import type { ProviderTokens, RsRecord, TokenStore, Transaction } from './interface.js';
+import { MemoryTokenStore } from './memory.js';
 
 // Cloudflare KV namespace type
 type KVNamespace = {
@@ -21,10 +14,6 @@ type KVNamespace = {
   ): Promise<void>;
   delete(key: string): Promise<void>;
 };
-
-// Cache TTL for KV reads (seconds) - reduces actual KV read operations
-// Cloudflare caches at the edge, so repeated reads within this window are free
-const KV_CACHE_TTL_SECONDS = 60; // 1 minute edge cache
 
 type EncryptFn = (plaintext: string) => Promise<string> | string;
 type DecryptFn = (ciphertext: string) => Promise<string> | string;
@@ -140,8 +129,10 @@ export class KvTokenStore implements TokenStore {
       return this.fallback.updateByRsRefresh(rsRefresh, provider, maybeNewRsAccess);
     }
 
-    const rsAccessChanged = maybeNewRsAccess && maybeNewRsAccess !== existing.rs_access_token;
-    const providerChanged = provider.access_token !== existing.provider.access_token ||
+    const rsAccessChanged =
+      maybeNewRsAccess && maybeNewRsAccess !== existing.rs_access_token;
+    const providerChanged =
+      provider.access_token !== existing.provider.access_token ||
       provider.refresh_token !== existing.provider.refresh_token;
 
     // Skip KV writes if nothing changed
@@ -221,69 +212,3 @@ export class KvTokenStore implements TokenStore {
     await this.fallback.deleteCode(code);
   }
 }
-
-const SESSION_KEY_PREFIX = 'session:';
-const SESSION_TTL_SECONDS = 24 * 60 * 60;
-
-export class KvSessionStore implements SessionStore {
-  private kv: KVNamespace;
-  private encrypt: EncryptFn;
-  private decrypt: DecryptFn;
-  private fallback: MemorySessionStore;
-
-  constructor(
-    kv: KVNamespace,
-    options?: {
-      encrypt?: EncryptFn;
-      decrypt?: DecryptFn;
-      fallback?: MemorySessionStore;
-    },
-  ) {
-    this.kv = kv;
-    this.encrypt = options?.encrypt ?? ((s) => s);
-    this.decrypt = options?.decrypt ?? ((s) => s);
-    this.fallback = options?.fallback ?? new MemorySessionStore();
-  }
-
-  private async putSession(key: string, value: SessionRecord): Promise<void> {
-    const raw = await this.encrypt(toJson(value));
-    await this.kv.put(`${SESSION_KEY_PREFIX}${key}`, raw, {
-      expiration: ttl(SESSION_TTL_SECONDS),
-    });
-    await this.fallback.put(key, value);
-  }
-
-  private async getSession(key: string): Promise<SessionRecord | null> {
-    const raw = await this.kv.get(`${SESSION_KEY_PREFIX}${key}`);
-    if (!raw) {
-      return this.fallback.get(key);
-    }
-    const plain = await this.decrypt(raw);
-    return fromJson<SessionRecord>(plain);
-  }
-
-  async ensure(sessionId: string): Promise<void> {
-    // Memory-only - no KV writes for sessions
-    const existing = await this.fallback.get(sessionId);
-    if (!existing) {
-      await this.fallback.put(sessionId, { created_at: Date.now() });
-    }
-  }
-
-  async get(sessionId: string): Promise<SessionRecord | null> {
-    return this.getSession(sessionId);
-  }
-
-  async put(sessionId: string, value: SessionRecord): Promise<void> {
-    await this.putSession(sessionId, value);
-  }
-
-  async delete(sessionId: string): Promise<void> {
-    await this.kv.delete(`${SESSION_KEY_PREFIX}${sessionId}`);
-    await this.fallback.delete(sessionId);
-  }
-}
-
-
-
-

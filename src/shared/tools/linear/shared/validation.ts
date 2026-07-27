@@ -116,28 +116,3 @@ export function shouldIncludeField(value: unknown, allowEmpty = false): boolean 
   // Include all other values
   return true;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

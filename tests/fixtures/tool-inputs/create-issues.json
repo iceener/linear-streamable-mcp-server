@@ -10,18 +10,20 @@
     {
       "name": "full_issue",
       "input": {
-        "items": [{
-          "teamId": "team-eng",
-          "title": "Implement new feature",
-          "description": "Detailed description of the feature",
-          "stateId": "state-todo",
-          "labelIds": ["label-feature"],
-          "assigneeId": "user-001",
-          "projectId": "project-001",
-          "priority": 2,
-          "estimate": 5,
-          "dueDate": "2025-01-15"
-        }]
+        "items": [
+          {
+            "teamId": "team-eng",
+            "title": "Implement new feature",
+            "description": "Detailed description of the feature",
+            "stateId": "state-todo",
+            "labelIds": ["label-feature"],
+            "assigneeId": "user-001",
+            "projectId": "project-001",
+            "priority": 2,
+            "estimate": 5,
+            "dueDate": "2025-01-15"
+          }
+        ]
       },
       "description": "Issue with all optional fields"
     },
@@ -46,34 +48,40 @@
     {
       "name": "with_parent_issue",
       "input": {
-        "items": [{
-          "teamId": "team-eng",
-          "title": "Sub-task",
-          "parentId": "issue-001"
-        }]
+        "items": [
+          {
+            "teamId": "team-eng",
+            "title": "Sub-task",
+            "parentId": "issue-001"
+          }
+        ]
       },
       "description": "Create sub-issue with parent"
     },
     {
       "name": "priority_as_number",
       "input": {
-        "items": [{
-          "teamId": "team-eng",
-          "title": "Priority test",
-          "priority": 1
-        }]
+        "items": [
+          {
+            "teamId": "team-eng",
+            "title": "Priority test",
+            "priority": 1
+          }
+        ]
       },
       "description": "Priority as number"
     },
     {
       "name": "with_zero_estimate_allowed",
       "input": {
-        "items": [{
-          "teamId": "team-eng",
-          "title": "Zero estimate",
-          "estimate": 0,
-          "allowZeroEstimate": true
-        }]
+        "items": [
+          {
+            "teamId": "team-eng",
+            "title": "Zero estimate",
+            "estimate": 0,
+            "allowZeroEstimate": true
+          }
+        ]
       },
       "description": "Explicitly allow zero estimate"
     },
@@ -115,9 +123,12 @@
     },
     {
       "name": "invalid_priority",
-      "input": { "items": [{ "teamId": "team-eng", "title": "Test", "priority": "INVALID_VALUE" }] },
+      "input": {
+        "items": [
+          { "teamId": "team-eng", "title": "Test", "priority": "INVALID_VALUE" }
+        ]
+      },
       "expectedError": "Invalid"
     }
   ]
 }
-

@@ -144,7 +144,7 @@ export function normalizeIssueFilter(
       const idValue =
         typeof value === 'string'
           ? value
-          : (value as { eq?: string })?.eq ?? undefined;
+          : ((value as { eq?: string })?.eq ?? undefined);
       if (idValue) {
         // Could be a UUID - try id filter instead
         setNested(result, ['id'], idValue);
@@ -163,28 +163,3 @@ export function normalizeIssueFilter(
   }
   return result;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -1,10 +1,27 @@
-/**
- * Shared tool registry for Linear MCP.
- * Tools defined here work in both Node.js and Cloudflare Workers.
- */
-
-import type { ZodObject, ZodRawShape } from 'zod';
 import {
+  addCommentsTool,
+  createIssuesTool,
+  createProjectsTool,
+  getIssuesTool,
+  listCommentsTool,
+  listCyclesTool,
+  listIssuesTool,
+  listProjectsTool,
+  listTeamsTool,
+  listUsersTool,
+  showIssuesUITool,
+  updateCommentsTool,
+  updateIssuesTool,
+  updateProjectsTool,
+  workspaceMetadataTool,
+} from './linear/index.js';
+import type { SharedToolDefinition, ToolContext, ToolResult } from './types.js';
+
+export type { SharedToolDefinition, ToolContext, ToolResult } from './types.js';
+export { defineTool } from './types.js';
+
+/** Linear tools in the stable discovery order captured before migration. */
+export const sharedTools = [
   workspaceMetadataTool,
   listIssuesTool,
   getIssuesTool,
@@ -20,72 +37,64 @@ import {
   createProjectsTool,
   updateProjectsTool,
   showIssuesUITool,
-} from './linear/index.js';
-import type { ToolContext, ToolResult } from './types.js';
+] as const satisfies readonly SharedToolDefinition[];
 
-// Re-export types for convenience
-export type { SharedToolDefinition, ToolContext, ToolResult } from './types.js';
-export { defineTool } from './types.js';
+export type RegisteredTool = (typeof sharedTools)[number];
 
-/**
- * Simplified tool interface for the registry (type-erased for storage).
- */
-export interface RegisteredTool {
-  name: string;
-  title?: string;
-  description: string;
-  inputSchema: ZodObject<ZodRawShape>;
-  outputSchema?: ZodRawShape;
-  annotations?: Record<string, unknown>;
-  handler: (args: Record<string, unknown>, context: ToolContext) => Promise<ToolResult>;
-}
-
-/**
- * All shared tools available in both runtimes.
- */
-export const sharedTools: RegisteredTool[] = [
-  // Linear tools - Workspace
-  workspaceMetadataTool as unknown as RegisteredTool,
-  // Linear tools - Issues
-  listIssuesTool as unknown as RegisteredTool,
-  getIssuesTool as unknown as RegisteredTool,
-  createIssuesTool as unknown as RegisteredTool,
-  updateIssuesTool as unknown as RegisteredTool,
-  // Linear tools - Teams & Users
-  listTeamsTool as unknown as RegisteredTool,
-  listUsersTool as unknown as RegisteredTool,
-  // Linear tools - Comments
-  listCommentsTool as unknown as RegisteredTool,
-  addCommentsTool as unknown as RegisteredTool,
-  updateCommentsTool as unknown as RegisteredTool,
-  // Linear tools - Cycles
-  listCyclesTool as unknown as RegisteredTool,
-  // Linear tools - Projects
-  listProjectsTool as unknown as RegisteredTool,
-  createProjectsTool as unknown as RegisteredTool,
-  updateProjectsTool as unknown as RegisteredTool,
-  // Linear tools - UI
-  showIssuesUITool as unknown as RegisteredTool,
-];
-
-/**
- * Get a tool by name.
- */
 export function getSharedTool(name: string): RegisteredTool | undefined {
-  return sharedTools.find((t) => t.name === name);
+  return sharedTools.find((tool) => tool.name === name);
 }
 
-/**
- * Get all tool names.
- */
 export function getSharedToolNames(): string[] {
-  return sharedTools.map((t) => t.name);
+  return sharedTools.map((tool) => tool.name);
 }
 
-/**
- * Execute a shared tool by name.
- * Handles input validation, output validation, and error wrapping.
- */
+async function executeRegisteredTool<T extends SharedToolDefinition>(
+  tool: T,
+  args: Record<string, unknown>,
+  context: ToolContext,
+): Promise<ToolResult> {
+  const parsed = tool.inputSchema.safeParse(args);
+  if (!parsed.success) {
+    const details = parsed.error.issues
+      .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+      .join(', ');
+    return {
+      content: [{ type: 'text', text: `Invalid input: ${details}` }],
+      isError: true,
+    };
+  }
+
+  const result = await tool.handler(parsed.data, context);
+  if (tool.outputSchema && !result.isError) {
+    if (!result.structuredContent) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: 'Tool with outputSchema must return structuredContent',
+          },
+        ],
+        isError: true,
+      };
+    }
+    const output = tool.outputSchema.safeParse(result.structuredContent);
+    if (!output.success) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Tool returned invalid structured output: ${output.error.message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+    result.structuredContent = output.data;
+  }
+  return result;
+}
+
 export async function executeSharedTool(
   name: string,
   args: Record<string, unknown>,
@@ -100,61 +109,19 @@ export async function executeSharedTool(
   }
 
   try {
-    // Check for cancellation before starting
     if (context.signal?.aborted) {
       return {
         content: [{ type: 'text', text: 'Operation was cancelled' }],
         isError: true,
       };
     }
-
-    // Validate input using Zod schema
-    const parseResult = tool.inputSchema.safeParse(args);
-    if (!parseResult.success) {
-      const errors = parseResult.error.errors
-        .map(
-          (e: { path: (string | number)[]; message: string }) =>
-            `${e.path.join('.')}: ${e.message}`,
-        )
-        .join(', ');
-      return {
-        content: [{ type: 'text', text: `Invalid input: ${errors}` }],
-        isError: true,
-      };
-    }
-
-    const result = await tool.handler(
-      parseResult.data as Record<string, unknown>,
-      context,
-    );
-
-    // Validate outputSchema compliance (per MCP spec)
-    if (tool.outputSchema && !result.isError) {
-      if (!result.structuredContent) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: 'Tool with outputSchema must return structuredContent (unless isError is true)',
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-
-    return result;
+    return await executeRegisteredTool(tool, args, context);
   } catch (error) {
-    // Check if this was an abort
-    if (context.signal?.aborted) {
-      return {
-        content: [{ type: 'text', text: 'Operation was cancelled' }],
-        isError: true,
-      };
-    }
-
+    const message = context.signal?.aborted
+      ? 'Operation was cancelled'
+      : `Tool error: ${error instanceof Error ? error.message : String(error)}`;
     return {
-      content: [{ type: 'text', text: `Tool error: ${(error as Error).message}` }],
+      content: [{ type: 'text', text: message }],
       isError: true,
     };
   }

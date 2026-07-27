@@ -3,11 +3,15 @@
  * Verifies: input validation, filtering, pagination, output shape.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { listIssuesTool } from '../../src/shared/tools/linear/list-issues.js';
-import { createMockLinearClient, resetMockCalls, type MockLinearClient } from '../mocks/linear-client.js';
 import type { ToolContext } from '../../src/shared/tools/types.js';
 import listIssuesFixtures from '../fixtures/tool-inputs/list-issues.json';
+import {
+  createMockLinearClient,
+  type MockLinearClient,
+  resetMockCalls,
+} from '../mocks/linear-client.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
@@ -17,7 +21,7 @@ let mockClient: MockLinearClient;
 
 const baseContext: ToolContext = {
   sessionId: 'test-session',
-  providerToken: 'test-token',
+  linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
 
@@ -73,7 +77,7 @@ describe('list_issues input validation', () => {
         const result = listIssuesTool.inputSchema.safeParse(fixture.input);
         expect(result.success).toBe(false);
         if (!result.success) {
-          const errorMessage = result.error.errors.map((e) => e.message).join(', ');
+          const errorMessage = result.error.issues.map((e) => e.message).join(', ');
           expect(errorMessage).toContain(fixture.expectedError);
         }
       });
@@ -124,7 +128,10 @@ describe('list_issues handler', () => {
   });
 
   it('passes projectId as filter', async () => {
-    const result = await listIssuesTool.handler({ projectId: 'project-001' }, baseContext);
+    const result = await listIssuesTool.handler(
+      { projectId: 'project-001' },
+      baseContext,
+    );
 
     expect(result.isError).toBeFalsy();
 
@@ -133,7 +140,7 @@ describe('list_issues handler', () => {
     expect(filter.project).toEqual({ id: { eq: 'project-001' } });
   });
 
-  it('converts q parameter to keyword OR filter', async () => {
+  it('converts q parameter to the default keyword AND filter', async () => {
     const result = await listIssuesTool.handler({ q: 'auth bug' }, baseContext);
 
     expect(result.isError).toBeFalsy();
@@ -141,25 +148,28 @@ describe('list_issues handler', () => {
     const call = mockClient._calls.rawRequest[0];
     const filter = call.variables?.filter as Record<string, unknown>;
 
-    // Should have OR filter with both keywords
-    expect(filter.or).toBeDefined();
-    const orFilters = filter.or as Array<Record<string, unknown>>;
-    expect(orFilters.length).toBe(2);
-    expect(orFilters).toContainEqual({ title: { containsIgnoreCase: 'auth' } });
-    expect(orFilters).toContainEqual({ title: { containsIgnoreCase: 'bug' } });
+    // Default matchMode=all requires every keyword.
+    expect(filter.and).toBeDefined();
+    const andFilters = filter.and as Array<Record<string, unknown>>;
+    expect(andFilters.length).toBe(2);
+    expect(andFilters).toContainEqual({ title: { containsIgnoreCase: 'auth' } });
+    expect(andFilters).toContainEqual({ title: { containsIgnoreCase: 'bug' } });
   });
 
   it('uses explicit keywords array', async () => {
-    const result = await listIssuesTool.handler({ keywords: ['fix', 'auth'] }, baseContext);
+    const result = await listIssuesTool.handler(
+      { keywords: ['fix', 'auth'] },
+      baseContext,
+    );
 
     expect(result.isError).toBeFalsy();
 
     const call = mockClient._calls.rawRequest[0];
     const filter = call.variables?.filter as Record<string, unknown>;
-    const orFilters = filter.or as Array<Record<string, unknown>>;
+    const andFilters = filter.and as Array<Record<string, unknown>>;
 
-    expect(orFilters).toContainEqual({ title: { containsIgnoreCase: 'fix' } });
-    expect(orFilters).toContainEqual({ title: { containsIgnoreCase: 'auth' } });
+    expect(andFilters).toContainEqual({ title: { containsIgnoreCase: 'fix' } });
+    expect(andFilters).toContainEqual({ title: { containsIgnoreCase: 'auth' } });
   });
 
   it('passes state filter to GraphQL', async () => {
@@ -220,7 +230,7 @@ describe('list_issues handler', () => {
     // Should have all three filters
     expect(filter.team).toEqual({ id: { eq: 'team-eng' } });
     expect(filter.state).toEqual({ type: { eq: 'started' } });
-    expect(filter.or).toBeDefined();
+    expect(filter.and).toBeDefined();
   });
 });
 
@@ -321,4 +331,3 @@ describe('list_issues edge cases', () => {
     expect(filter.and).toBeDefined();
   });
 });
-

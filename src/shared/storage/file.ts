@@ -1,22 +1,11 @@
 // File-backed storage for Node.js with encryption and strict permissions
 // Provider-agnostic version from Spotify MCP
 
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type {
-  ProviderTokens,
-  RsRecord,
-  TokenStore,
-  Transaction,
-} from './interface.js';
-import { MemoryTokenStore } from './memory.js';
 import { sharedLogger as logger } from '../utils/logger.js';
+import type { ProviderTokens, RsRecord, TokenStore, Transaction } from './interface.js';
+import { MemoryTokenStore } from './memory.js';
 
 /** File permission: owner read/write only (600) */
 const SECURE_FILE_MODE = 0o600;
@@ -42,10 +31,7 @@ function createSyncEncryptor(keyBase64: string): {
   const crypto = require('node:crypto');
 
   // Decode key (base64url)
-  const key = Buffer.from(
-    keyBase64.replace(/-/g, '+').replace(/_/g, '/'),
-    'base64',
-  );
+  const key = Buffer.from(keyBase64.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
 
   if (key.length !== 32) {
     throw new Error('Encryption key must be 32 bytes (256 bits)');
@@ -82,10 +68,7 @@ function createSyncEncryptor(keyBase64: string): {
       const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
       decipher.setAuthTag(authTag);
 
-      const decrypted = Buffer.concat([
-        decipher.update(encrypted),
-        decipher.final(),
-      ]);
+      const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
 
       return decrypted.toString('utf8');
     },
@@ -356,11 +339,7 @@ export class FileTokenStore implements TokenStore {
     return this.memory.deleteTransaction(txnId);
   }
 
-  async saveCode(
-    code: string,
-    txnId: string,
-    ttlSeconds?: number,
-  ): Promise<void> {
+  async saveCode(code: string, txnId: string, ttlSeconds?: number): Promise<void> {
     // Codes are memory-only (don't persist OAuth flow state)
     return this.memory.saveCode(code, txnId, ttlSeconds);
   }

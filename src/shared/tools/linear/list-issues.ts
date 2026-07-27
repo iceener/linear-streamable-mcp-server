@@ -3,7 +3,7 @@
  * Uses raw GraphQL to avoid N+1 query problem with SDK lazy loading.
  */
 
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { config } from '../../../config/env.js';
 import { toolsMetadata } from '../../../config/metadata.js';
 import { ListIssuesOutputSchema } from '../../../schemas/outputs.js';
@@ -18,7 +18,7 @@ import { normalizeIssueFilter } from '../../../utils/filters.js';
 import { previewLinesFromItems, summarizeList } from '../../../utils/messages.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
 import type { DetailLevel, IssueListItem } from './shared/index.js';
-import { formatIssueDetails, formatIssuePreviewLine } from './shared/index.js';
+import { formatIssuePreviewLine } from './shared/index.js';
 
 const InputSchema = z.object({
   limit: z
@@ -30,7 +30,7 @@ const InputSchema = z.object({
     .describe('Max results. Default: 25.'),
   cursor: z.string().optional().describe('Pagination cursor from previous response.'),
   filter: z
-    .record(z.any())
+    .record(z.string(), z.any())
     .optional()
     .describe(
       'GraphQL-style IssueFilter. Structure: { field: { comparator: value } }. ' +
@@ -93,6 +93,7 @@ export const listIssuesTool = defineTool({
   title: toolsMetadata.list_issues.title,
   description: toolsMetadata.list_issues.description,
   inputSchema: InputSchema,
+  outputSchema: ListIssuesOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -333,7 +334,7 @@ export const listIssuesTool = defineTool({
 
     const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text }];
 
-    if (config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
+    if (context.includeJsonInContent ?? config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
       parts.push({ type: 'text', text: JSON.stringify(structured) });
     }
 

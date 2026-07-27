@@ -3,11 +3,15 @@
  * Verifies: input validation, batch fetching, output shape.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getIssuesTool } from '../../src/shared/tools/linear/get-issues.js';
-import { createMockLinearClient, resetMockCalls, type MockLinearClient } from '../mocks/linear-client.js';
 import type { ToolContext } from '../../src/shared/tools/types.js';
 import getIssuesFixtures from '../fixtures/tool-inputs/get-issues.json';
+import {
+  createMockLinearClient,
+  type MockLinearClient,
+  resetMockCalls,
+} from '../mocks/linear-client.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
@@ -17,7 +21,7 @@ let mockClient: MockLinearClient;
 
 const baseContext: ToolContext = {
   sessionId: 'test-session',
-  providerToken: 'test-token',
+  linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
 
@@ -259,7 +263,8 @@ describe('get_issues error handling', () => {
     const results = structured.results as Array<Record<string, unknown>>;
 
     expect(results[0].success).toBe(false);
-    expect((results[0].error as Record<string, unknown>).message).toContain('Network error');
+    expect((results[0].error as Record<string, unknown>).message).toContain(
+      'Network error',
+    );
   });
 });
-

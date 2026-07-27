@@ -17,4 +17,7 @@ vi.mock('../src/services/linear/client.js', async () => {
   };
 });
 
-export { createMockLinearClient, type MockLinearClient } from './mocks/linear-client.js';
+export {
+  createMockLinearClient,
+  type MockLinearClient,
+} from './mocks/linear-client.js';

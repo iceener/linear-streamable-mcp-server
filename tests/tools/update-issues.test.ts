@@ -3,11 +3,15 @@
  * Verifies: input validation, batch updates, state/label changes, error handling.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { updateIssuesTool } from '../../src/shared/tools/linear/update-issues.js';
-import { createMockLinearClient, resetMockCalls, type MockLinearClient } from '../mocks/linear-client.js';
 import type { ToolContext } from '../../src/shared/tools/types.js';
 import updateIssuesFixtures from '../fixtures/tool-inputs/update-issues.json';
+import {
+  createMockLinearClient,
+  type MockLinearClient,
+  resetMockCalls,
+} from '../mocks/linear-client.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
@@ -17,7 +21,7 @@ let mockClient: MockLinearClient;
 
 const baseContext: ToolContext = {
   sessionId: 'test-session',
-  providerToken: 'test-token',
+  linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
 
@@ -89,7 +93,10 @@ describe('update_issues handler', () => {
     const summary = structured.summary as { ok: number; failed: number };
 
     expect(summary.ok).toBe(1);
-    expect(mockClient.updateIssue).toHaveBeenCalledWith('issue-001', expect.objectContaining({ title: 'Updated title' }));
+    expect(mockClient.updateIssue).toHaveBeenCalledWith(
+      'issue-001',
+      expect.objectContaining({ title: 'Updated title' }),
+    );
   });
 
   it('updates issue state', async () => {
@@ -202,9 +209,8 @@ describe('update_issues handler', () => {
 
   it('archives issue (calls archiveIssue method)', async () => {
     // Add archiveIssue method to mock
-    (mockClient as unknown as { archiveIssue: ReturnType<typeof vi.fn> }).archiveIssue = vi.fn(
-      async () => ({ success: true }),
-    );
+    (mockClient as unknown as { archiveIssue: ReturnType<typeof vi.fn> }).archiveIssue =
+      vi.fn(async () => ({ success: true }));
 
     const result = await updateIssuesTool.handler(
       { items: [{ id: 'issue-001', archived: true }] },
@@ -215,7 +221,8 @@ describe('update_issues handler', () => {
 
     // Archive uses a separate archiveIssue method, not updateIssue
     expect(
-      (mockClient as unknown as { archiveIssue: ReturnType<typeof vi.fn> }).archiveIssue,
+      (mockClient as unknown as { archiveIssue: ReturnType<typeof vi.fn> })
+        .archiveIssue,
     ).toHaveBeenCalledWith('issue-001');
   });
 });
@@ -341,13 +348,18 @@ describe('update_issues error handling', () => {
     const results = structured.results as Array<Record<string, unknown>>;
 
     expect(results[0].success).toBe(false);
-    expect((results[0].error as Record<string, unknown>).message).toContain('Issue not found');
+    expect((results[0].error as Record<string, unknown>).message).toContain(
+      'Issue not found',
+    );
   });
 
   it('continues batch on partial failure', async () => {
     (mockClient.updateIssue as ReturnType<typeof vi.fn>)
       .mockRejectedValueOnce(new Error('First failed'))
-      .mockResolvedValueOnce({ success: true, issue: { id: 'issue-002', identifier: 'ENG-124' } });
+      .mockResolvedValueOnce({
+        success: true,
+        issue: { id: 'issue-002', identifier: 'ENG-124' },
+      });
 
     const result = await updateIssuesTool.handler(
       {
@@ -366,4 +378,3 @@ describe('update_issues error handling', () => {
     expect(summary.failed).toBe(1);
   });
 });
-

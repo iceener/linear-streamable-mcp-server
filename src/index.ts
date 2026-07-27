@@ -1,77 +1,59 @@
-import { serve } from '@hono/node-server';
-import { config } from './config/env.js';
-import { stopContextCleanup } from './core/context.js';
 import { buildHttpApp } from './http/app.js';
+import { defaultOAuthProxyBaseUrl } from './http/auth.js';
 import { buildAuthApp } from './http/auth-app.js';
+import { parseConfig } from './shared/config/env.js';
 import { FileTokenStore } from './shared/storage/file.js';
-import { MemorySessionStore } from './shared/storage/memory.js';
-import { initializeStorage } from './shared/storage/singleton.js';
-import { logger } from './utils/logger.js';
+import { sharedLogger as logger } from './shared/utils/logger.js';
 
-// Store references for graceful shutdown
-let tokenStore: FileTokenStore | null = null;
-let sessionStore: MemorySessionStore | null = null;
+const config = parseConfig(process.env as Record<string, unknown>);
+const tokenStore = new FileTokenStore(config.RS_TOKENS_FILE, config.RS_TOKENS_ENC_KEY);
+const oauthProxyBaseUrl = defaultOAuthProxyBaseUrl(config, false);
+const runtime = buildHttpApp(config, {
+  runtimeName: 'bun',
+  tokenStore,
+  oauthProxyBaseUrl,
+});
+const server = Bun.serve({
+  hostname: config.HOST,
+  port: config.PORT,
+  fetch: runtime.fetch,
+});
 
-async function main(): Promise<void> {
-  try {
-    // Initialize storage singleton with encryption
-    tokenStore = new FileTokenStore(
-      config.RS_TOKENS_FILE,
-      config.RS_TOKENS_ENC_KEY,
-    );
-    sessionStore = new MemorySessionStore();
-    initializeStorage(tokenStore, sessionStore);
+const authServer = config.AUTH_ENABLED
+  ? Bun.serve({
+      hostname: config.HOST,
+      port: config.PORT + 1,
+      fetch: buildAuthApp(config, tokenStore, oauthProxyBaseUrl).fetch,
+    })
+  : undefined;
 
-    const app = buildHttpApp();
-    serve({ fetch: app.fetch, port: config.PORT, hostname: config.HOST });
+logger.info('server', {
+  message: 'Linear MCP server started',
+  url: config.MCP_PUBLIC_URL.href,
+  protocol: '2026-07-28',
+  legacyMode: config.MCP_LEGACY_MODE,
+  authEnabled: config.AUTH_ENABLED,
+  oauthUrl: authServer ? oauthProxyBaseUrl.href : undefined,
+});
 
-    // OAuth Authorization Server (runs on PORT+1 if auth enabled)
-    if (config.AUTH_ENABLED) {
-      const authApp = buildAuthApp();
-      serve({
-        fetch: authApp.fetch,
-        port: Number(config.PORT) + 1,
-        hostname: config.HOST,
-      });
-    }
+let shuttingDown = false;
+async function shutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info('server', { message: 'Shutting down', signal });
 
-    await logger.info('server', {
-      message: `MCP server started on http://${config.HOST}:${config.PORT}`,
-      environment: config.NODE_ENV,
-      authEnabled: config.AUTH_ENABLED,
-      tokenEncryption: Boolean(config.RS_TOKENS_ENC_KEY),
-    });
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    await logger.error('server', {
-      message: 'Server startup failed',
-      error: (error as Error).message,
-    });
-    process.exit(1);
-  }
+  const stops = [server.stop(false), authServer?.stop(false)].filter(
+    (value): value is Promise<void> => value !== undefined,
+  );
+  await runtime.close();
+  tokenStore.flush();
+  tokenStore.stopCleanup();
+  await Promise.all(stops);
 }
 
-function gracefulShutdown(signal: string): void {
-  void logger.info('server', { message: `Received ${signal}, shutting down` });
-
-  // Stop cleanup intervals
-  stopContextCleanup();
-
-  // Flush token store to disk and stop its cleanup
-  if (tokenStore) {
-    tokenStore.flush();
-    tokenStore.stopCleanup();
-  }
-
-  // Stop session store cleanup
-  if (sessionStore) {
-    sessionStore.stopCleanup();
-  }
-
-  process.exit(0);
-}
-
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-
-void main();
+process.once('SIGINT', () => {
+  void shutdown('SIGINT');
+});
+process.once('SIGTERM', () => {
+  void shutdown('SIGTERM');
+});

@@ -133,7 +133,9 @@ export async function handleAuthorize(
     throw new Error('invalid_request: redirect_uri is required');
   }
   if (!input.codeChallenge || input.codeChallengeMethod !== 'S256') {
-    throw new Error('invalid_request: PKCE code_challenge with S256 method is required');
+    throw new Error(
+      'invalid_request: PKCE code_challenge with S256 method is required',
+    );
   }
 
   const txnId = generateOpaqueToken(16);
@@ -258,8 +260,9 @@ export async function handleProviderCallback(
   // Exchange code with provider
   // Use explicit tokenUrl if set (Linear uses api.linear.app), else construct from accountsUrl
   const tokenEndpointPath = options.tokenEndpointPath || '/api/token';
-  const tokenUrl = providerConfig.tokenUrl 
-    || new URL(tokenEndpointPath, providerConfig.accountsUrl).toString();
+  const tokenUrl =
+    providerConfig.tokenUrl ||
+    new URL(tokenEndpointPath, providerConfig.accountsUrl).toString();
   const callbackPath = options.callbackPath || '/oauth/callback';
   const cb = new URL(callbackPath, options.baseUrl).toString();
 
@@ -381,8 +384,9 @@ async function refreshProviderToken(
   providerConfig: ProviderConfig,
 ): Promise<ProviderTokens> {
   // Use explicit tokenUrl if set (Linear uses api.linear.app), else construct from accountsUrl
-  const tokenUrl = providerConfig.tokenUrl 
-    || new URL('/api/token', providerConfig.accountsUrl).toString();
+  const tokenUrl =
+    providerConfig.tokenUrl ||
+    new URL('/api/token', providerConfig.accountsUrl).toString();
 
   const form = new URLSearchParams({
     grant_type: 'refresh_token',
@@ -438,7 +442,9 @@ async function refreshProviderToken(
     access_token: accessToken,
     refresh_token: data.refresh_token ?? providerRefreshToken, // Some providers don't rotate
     expires_at: Date.now() + Number(data.expires_in ?? 3600) * 1000,
-    scopes: String(data.scope || '').split(/\s+/).filter(Boolean),
+    scopes: String(data.scope || '')
+      .split(/\s+/)
+      .filter(Boolean),
   };
 }
 
@@ -502,7 +508,8 @@ export async function handleToken(
     // Only rotate when provider refresh_token changed (security vs KV quota trade-off)
     // When provider rotates its refresh_token, we rotate RS token for security.
     // Otherwise, keep the same RS token to save KV write operations.
-    const providerRefreshRotated = provider.refresh_token !== rec.provider.refresh_token;
+    const providerRefreshRotated =
+      provider.refresh_token !== rec.provider.refresh_token;
     const newAccess = providerRefreshRotated ? generateOpaqueToken(24) : undefined;
 
     const updated = await store.updateByRsRefresh(

@@ -8,17 +8,17 @@
  * - Helpful error messages and zero-result hints
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { listIssuesTool } from '../../src/shared/tools/linear/list-issues.js';
 import { listMyIssuesTool } from '../../src/shared/tools/linear/list-my-issues.js';
 import { workspaceMetadataTool } from '../../src/shared/tools/linear/workspace-metadata.js';
+import type { ToolContext } from '../../src/shared/tools/types.js';
 import {
   createMockLinearClient,
-  resetMockCalls,
-  type MockLinearClient,
   type MockIssue,
+  type MockLinearClient,
+  resetMockCalls,
 } from '../mocks/linear-client.js';
-import type { ToolContext } from '../../src/shared/tools/types.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
@@ -28,7 +28,7 @@ let mockClient: MockLinearClient;
 
 const baseContext: ToolContext = {
   sessionId: 'test-session',
-  providerToken: 'test-token',
+  linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
 
@@ -62,6 +62,7 @@ function generateManyIssues(count: number): MockIssue[] {
     assignee: Promise.resolve({ id: 'user-001', name: 'Test User' }),
     labels: () => Promise.resolve({ nodes: [] }),
     attachments: () => Promise.resolve({ nodes: [] }),
+    comments: () => Promise.resolve({ nodes: [], pageInfo: { hasNextPage: false } }),
   }));
 }
 
@@ -487,10 +488,7 @@ describe('Zero Results Handling', () => {
   it('shows helpful hints when assignee filter returns no results', async () => {
     mockClient = createMockLinearClient({ issues: [] });
 
-    const result = await listIssuesTool.handler(
-      { assignedToMe: true },
-      baseContext,
-    );
+    const result = await listIssuesTool.handler({ assignedToMe: true }, baseContext);
 
     const textContent = result.content[0].text;
     // Should suggest verifying user or removing filter
@@ -566,7 +564,9 @@ describe('Reasonable Limits', () => {
 
   it('get_issues batch limited to 50 items', async () => {
     // Import get_issues schema to verify batch limit
-    const { getIssuesTool } = await import('../../src/shared/tools/linear/get-issues.js');
+    const { getIssuesTool } = await import(
+      '../../src/shared/tools/linear/get-issues.js'
+    );
 
     // Should accept exactly 50 items
     const valid = getIssuesTool.inputSchema.safeParse({
@@ -581,4 +581,3 @@ describe('Reasonable Limits', () => {
     expect(tooMany.success).toBe(false);
   });
 });
-

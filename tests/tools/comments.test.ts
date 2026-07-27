@@ -3,17 +3,17 @@
  * Verifies: comment listing, adding comments, batch operations, output shapes.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  listCommentsTool,
   addCommentsTool,
+  listCommentsTool,
 } from '../../src/shared/tools/linear/comments.js';
+import type { ToolContext } from '../../src/shared/tools/types.js';
 import {
   createMockLinearClient,
-  resetMockCalls,
   type MockLinearClient,
+  resetMockCalls,
 } from '../mocks/linear-client.js';
-import type { ToolContext } from '../../src/shared/tools/types.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
@@ -23,7 +23,7 @@ let mockClient: MockLinearClient;
 
 const baseContext: ToolContext = {
   sessionId: 'test-session',
-  providerToken: 'test-token',
+  linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
 
@@ -83,7 +83,10 @@ describe('list_comments tool', () => {
 
   describe('handler behavior', () => {
     it('returns comments for specified issue', async () => {
-      const result = await listCommentsTool.handler({ issueId: 'issue-001' }, baseContext);
+      const result = await listCommentsTool.handler(
+        { issueId: 'issue-001' },
+        baseContext,
+      );
 
       expect(result.isError).toBeFalsy();
 
@@ -119,7 +122,10 @@ describe('list_comments tool', () => {
 
   describe('output shape', () => {
     it('matches ListCommentsOutputSchema', async () => {
-      const result = await listCommentsTool.handler({ issueId: 'issue-001' }, baseContext);
+      const result = await listCommentsTool.handler(
+        { issueId: 'issue-001' },
+        baseContext,
+      );
 
       const structured = result.structuredContent as Record<string, unknown>;
       const items = structured.items as Array<Record<string, unknown>>;
@@ -132,7 +138,10 @@ describe('list_comments tool', () => {
     });
 
     it('includes comment metadata (body, user, dates)', async () => {
-      const result = await listCommentsTool.handler({ issueId: 'issue-001' }, baseContext);
+      const result = await listCommentsTool.handler(
+        { issueId: 'issue-001' },
+        baseContext,
+      );
 
       const structured = result.structuredContent as Record<string, unknown>;
       const items = structured.items as Array<Record<string, unknown>>;
@@ -151,7 +160,10 @@ describe('list_comments tool', () => {
     });
 
     it('includes pagination info', async () => {
-      const result = await listCommentsTool.handler({ issueId: 'issue-001' }, baseContext);
+      const result = await listCommentsTool.handler(
+        { issueId: 'issue-001' },
+        baseContext,
+      );
 
       const structured = result.structuredContent as Record<string, unknown>;
       expect('nextCursor' in structured || 'cursor' in structured).toBe(true);
@@ -160,7 +172,10 @@ describe('list_comments tool', () => {
 
   describe('common workflows', () => {
     it('reads discussion history on an issue', async () => {
-      const result = await listCommentsTool.handler({ issueId: 'issue-001' }, baseContext);
+      const result = await listCommentsTool.handler(
+        { issueId: 'issue-001' },
+        baseContext,
+      );
 
       expect(result.isError).toBeFalsy();
 
@@ -513,7 +528,8 @@ describe('update_comments tool', () => {
         items: [{ id: 'comment-001', body: '' }],
       });
       expect(result.success).toBe(false);
-    });    it('accepts valid update', () => {
+    });
+    it('accepts valid update', () => {
       const result = updateCommentsTool.inputSchema.safeParse({
         items: [{ id: 'comment-001', body: 'Updated content' }],
       });
@@ -528,8 +544,12 @@ describe('update_comments tool', () => {
           items: [{ id: 'comment-001', body: 'Updated comment body' }],
         },
         baseContext,
-      );      expect(result.isError).toBeFalsy();
-      expect(mockClient.updateComment).toHaveBeenCalledWith('comment-001', { body: 'Updated comment body' });      const structured = result.structuredContent as Record<string, unknown>;
+      );
+      expect(result.isError).toBeFalsy();
+      expect(mockClient.updateComment).toHaveBeenCalledWith('comment-001', {
+        body: 'Updated comment body',
+      });
+      const structured = result.structuredContent as Record<string, unknown>;
       const summary = structured.summary as { ok: number; failed: number };
       expect(summary.ok).toBe(1);
     });
@@ -543,13 +563,15 @@ describe('update_comments tool', () => {
           ],
         },
         baseContext,
-      );      expect(result.isError).toBeFalsy();
+      );
+      expect(result.isError).toBeFalsy();
       expect(mockClient.updateComment).toHaveBeenCalledTimes(2);
 
       const structured = result.structuredContent as Record<string, unknown>;
       const summary = structured.summary as { ok: number; failed: number };
       expect(summary.ok).toBe(2);
-    });    it('suggests verifying with list_comments', async () => {
+    });
+    it('suggests verifying with list_comments', async () => {
       const result = await updateCommentsTool.handler(
         {
           items: [{ id: 'comment-001', body: 'Updated' }],

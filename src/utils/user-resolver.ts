@@ -142,7 +142,9 @@ export async function resolveUserByName(
   const wordMatches = users.filter((u) => {
     if (!u.name) return false;
     const nameWords = normalizeForSearch(u.name).split(/\s+/);
-    return searchWords.some((sw) => nameWords.some((nw) => nw.includes(sw) || sw.includes(nw)));
+    return searchWords.some((sw) =>
+      nameWords.some((nw) => nw.includes(sw) || sw.includes(nw)),
+    );
   });
 
   if (wordMatches.length === 1) {
@@ -201,4 +203,3 @@ export async function resolveAssignee(
   // No assignee specified - return success with no user (will use default)
   return { success: true };
 }
-

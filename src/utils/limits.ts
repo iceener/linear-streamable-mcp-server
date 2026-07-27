@@ -86,7 +86,7 @@ export const withRetry = async <T>(
       if (!isRateLimitError(error) || attempt === maxRetries) {
         throw error;
       }
-      const delayMs = Math.min(baseDelayMs * Math.pow(2, attempt), maxDelayMs);
+      const delayMs = Math.min(baseDelayMs * 2 ** attempt, maxDelayMs);
       await delay(delayMs);
     }
   }

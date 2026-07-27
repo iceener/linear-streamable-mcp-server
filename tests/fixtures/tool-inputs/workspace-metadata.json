@@ -38,7 +38,14 @@
     {
       "name": "full_bootstrap",
       "input": {
-        "include": ["profile", "teams", "workflow_states", "labels", "projects", "favorites"],
+        "include": [
+          "profile",
+          "teams",
+          "workflow_states",
+          "labels",
+          "projects",
+          "favorites"
+        ],
         "project_limit": 10,
         "label_limit": 50
       },
@@ -49,23 +56,22 @@
     {
       "name": "invalid_include_value",
       "input": { "include": ["invalid_option"] },
-      "expectedError": "Invalid enum value"
+      "expectedError": "Invalid option"
     },
     {
       "name": "project_limit_too_high",
       "input": { "include": ["projects"], "project_limit": 999 },
-      "expectedError": "Number must be less than or equal to 100"
+      "expectedError": "Too big: expected number to be <=100"
     },
     {
       "name": "project_limit_zero",
       "input": { "include": ["projects"], "project_limit": 0 },
-      "expectedError": "Number must be greater than or equal to 1"
+      "expectedError": "Too small: expected number to be >=1"
     },
     {
       "name": "label_limit_too_high",
       "input": { "include": ["labels"], "label_limit": 500 },
-      "expectedError": "Number must be less than or equal to 200"
+      "expectedError": "Too big: expected number to be <=200"
     }
   ]
 }
-

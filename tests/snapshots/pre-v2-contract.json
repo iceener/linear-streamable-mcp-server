@@ -1,0 +1,887 @@
+{
+  "tools": [
+    {
+      "name": "workspace_metadata",
+      "description": "Use this to discover workspace entities and canonical IDs (viewer, teams, workflow states, labels, projects, favorites). Use this FIRST whenever you don't know ids. Inputs: include? (profile|teams|workflow_states|labels|projects|favorites), teamIds?, project_limit?, label_limit?.\nReturns: viewer, teams[] (with estimation settings and cyclesEnabled), workflowStatesByTeam, labelsByTeam, projects[], favorites?. Next: Use teamId/projectId to filter 'list_issues'; use workflowStatesByTeam[teamId][].id as stateId for 'update_issues'; use labelsByTeam ids for label operations. If a team has cyclesEnabled=false, avoid cycle-related tools.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "include": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "profile",
+                "teams",
+                "workflow_states",
+                "labels",
+                "projects",
+                "favorites"
+              ]
+            },
+            "description": "What to include. Defaults to ['profile','teams','workflow_states','labels','projects']. 'profile' returns viewer (id, name, email, timezone). 'teams' returns team list with cyclesEnabled flag. 'workflow_states' returns workflowStatesByTeam[teamId] with state id/name/type. 'labels' returns labelsByTeam[teamId]. 'projects' returns project list. 'favorites' returns user favorites."
+          },
+          "teamIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Filter to specific team UUIDs. If omitted, fetches all teams."
+          },
+          "project_limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Max projects per team. Default: 10."
+          },
+          "label_limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "description": "Max labels per team. Default: 50."
+          }
+        },
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "list_issues",
+      "description": "List issues with filtering. Inputs: teamId?, projectId?, filter?, q?, keywords?, matchMode?, includeArchived?, orderBy?(updatedAt|createdAt), detail?(minimal|standard|full), limit?, cursor?, assignedToMe?.\n\n⚠️ orderBy only supports updatedAt or createdAt. DO NOT use orderBy:\"priority\" - use filter instead!\n\nKEYWORD SEARCH (q/keywords):\n- q: Extract 2-4 significant keywords from user intent. Avoid short/common words.\n- matchMode: 'all' (default, precise) requires ALL tokens; 'any' (broad) requires at least ONE.\n- Example: user says \"find cursor workshop task\" → q: \"cursor workshop\"\n\nFILTERING:\n- High priority: filter: { priority: { lte: 2 } } (1=Urgent, 2=High, 3=Medium, 4=Low)\n- Active issues: filter: { state: { type: { neq: 'completed' } } }\n- In progress: filter: { state: { type: { eq: 'started' } } }\n- My issues: assignedToMe: true\n\nDETAIL LEVELS: minimal (id,title,state), standard (default, +priority,assignee,project), full (+labels,description).\n\nReturns: { items[], pagination, meta }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Max results. Default: 25."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from previous response."
+          },
+          "filter": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "GraphQL-style IssueFilter. Structure: { field: { comparator: value } }. Comparators: eq, neq, lt, lte, gt, gte, in, nin, containsIgnoreCase, startsWith, endsWith. Examples: { state: { type: { eq: 'started' } } } for in-progress, { state: { type: { neq: 'completed' } } } for open issues, { assignee: { email: { eqIgnoreCase: 'x@y.com' } } }, { labels: { name: { in: ['Bug', 'Urgent'] } } }, { title: { containsIgnoreCase: 'search' } }."
+          },
+          "teamId": {
+            "type": "string",
+            "description": "Filter by team UUID."
+          },
+          "projectId": {
+            "type": "string",
+            "description": "Filter by project UUID."
+          },
+          "includeArchived": {
+            "type": "boolean",
+            "description": "Include archived issues. Default: false."
+          },
+          "orderBy": {
+            "type": "string",
+            "enum": [
+              "updatedAt",
+              "createdAt"
+            ],
+            "description": "Sort order. Default: 'updatedAt'. Note: To prioritize high-priority issues, use filter: { priority: { lte: 2 } } instead."
+          },
+          "detail": {
+            "type": "string",
+            "enum": [
+              "minimal",
+              "standard",
+              "full"
+            ],
+            "description": "Detail level: 'minimal' (id, title, state), 'standard' (+ priority, assignee, project, due), 'full' (+ labels, description). Default: 'standard'."
+          },
+          "q": {
+            "type": "string",
+            "description": "Free-text search query. Splits into tokens by whitespace, matches title case-insensitively. Use 2-4 significant keywords extracted from user intent. Avoid short/common words. Example: user says 'find my task about the cursor workshop' → q: 'cursor workshop'"
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Explicit keywords for title search. Uses matchMode logic (default: all must match)."
+          },
+          "matchMode": {
+            "type": "string",
+            "enum": [
+              "all",
+              "any"
+            ],
+            "description": "How keyword tokens are matched: 'all' requires ALL tokens present in title (precise, default), 'any' requires at least ONE token (broad, use for exploratory searches)."
+          },
+          "assignedToMe": {
+            "type": "boolean",
+            "description": "If true, only show issues assigned to the current viewer. Shortcut for filter.assignee.id.eq with viewer ID."
+          }
+        },
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "get_issues",
+      "description": "Fetch detailed issues in batch by ids (UUIDs or short ids like ENG-123). Inputs: { ids: string[] }.\nReturns: { results: Array<{ index, ok, id?, identifier?, issue? }>, summary }. Each issue includes assignee, state, project, labels, attachments, and branchName when available. Next: Call 'update_issues' to modify fields or 'list_issues' to discover more.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "description": "Issue IDs to fetch. Accepts UUIDs or short identifiers like ENG-123."
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "create_issues",
+      "description": "Create multiple issues in one call. Inputs: { items: Array<{ teamId: string; title: string; description?; stateId?; stateName?; stateType?; labelIds?; labelNames?; assigneeId?; assigneeName?; assigneeEmail?; projectId?; projectName?; priority?; estimate?; dueDate?; parentId?; allowZeroEstimate? }>; parallel?; dry_run? }.\n\nHUMAN-READABLE INPUTS (use workspace_metadata to discover valid values):\n- priority: 0-4 or \"Urgent\"/\"High\"/\"Medium\"/\"Low\" (standardized)\n- stateType: \"completed\"/\"started\"/\"backlog\"/\"unstarted\"/\"canceled\" (standardized)\n- stateName/labelNames/assigneeName/projectName: workspace-specific\n\nBehavior: Only send fields you intend to set. If 'assigneeId' is omitted, defaults to current viewer. Invalid numbers are ignored (priority<0 dropped; estimate<=0 dropped unless allowZeroEstimate=true). Returns: per-item results with id/identifier. Next: verify with 'list_issues'.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "teamId": {
+                  "type": "string",
+                  "description": "Team UUID. Required."
+                },
+                "title": {
+                  "type": "string",
+                  "description": "Issue title. Required."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Markdown description."
+                },
+                "stateId": {
+                  "type": "string",
+                  "description": "Workflow state UUID. Or use stateName/stateType for name-based lookup."
+                },
+                "stateName": {
+                  "type": "string",
+                  "description": "State name from your workspace. Use workspace_metadata to see available names."
+                },
+                "stateType": {
+                  "type": "string",
+                  "enum": [
+                    "backlog",
+                    "unstarted",
+                    "started",
+                    "completed",
+                    "canceled"
+                  ],
+                  "description": "State type. Finds first matching state. Use when you want \"any completed state\"."
+                },
+                "labelIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Label UUIDs to attach."
+                },
+                "labelNames": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Label names from your workspace. Use workspace_metadata to see available labels."
+                },
+                "assigneeId": {
+                  "type": "string",
+                  "description": "User UUID. If omitted, defaults to current viewer."
+                },
+                "assigneeName": {
+                  "type": "string",
+                  "description": "User name (fuzzy match). Partial names work. Use workspace_metadata to list users."
+                },
+                "assigneeEmail": {
+                  "type": "string",
+                  "description": "User email to assign (exact match, case-insensitive)."
+                },
+                "projectId": {
+                  "type": "string",
+                  "description": "Project UUID."
+                },
+                "projectName": {
+                  "type": "string",
+                  "description": "Project name. Resolved to projectId automatically."
+                },
+                "priority": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4
+                    },
+                    {
+                      "type": "string",
+                      "enum": [
+                        "None",
+                        "Urgent",
+                        "High",
+                        "Medium",
+                        "Normal",
+                        "Low",
+                        "none",
+                        "urgent",
+                        "high",
+                        "medium",
+                        "normal",
+                        "low"
+                      ]
+                    }
+                  ],
+                  "description": "Priority: 0-4 or \"None\"/\"Urgent\"/\"High\"/\"Medium\"/\"Low\"."
+                },
+                "estimate": {
+                  "type": "number",
+                  "description": "Story points / estimate value."
+                },
+                "allowZeroEstimate": {
+                  "type": "boolean",
+                  "description": "If true and estimate=0, sends 0. Otherwise zero is omitted."
+                },
+                "dueDate": {
+                  "type": "string",
+                  "description": "Due date (YYYY-MM-DD)."
+                },
+                "parentId": {
+                  "type": "string",
+                  "description": "Parent issue UUID for sub-issues."
+                }
+              },
+              "required": [
+                "teamId",
+                "title"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "description": "Issues to create."
+          },
+          "parallel": {
+            "type": "boolean",
+            "description": "Run in parallel. Default: sequential."
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "If true, validate but do not create."
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "update_issues",
+      "description": "Update issues in batch (state, labels, assignee, metadata). Supports up to 50 items per call — always batch all updates together. Inputs: { items: Array<{ id: string; title?; description?; stateId?; stateName?; stateType?; labelIds?; labelNames?; addLabelIds?; addLabelNames?; removeLabelIds?; removeLabelNames?; assigneeId?; assigneeName?; assigneeEmail?; projectId?; projectName?; priority?; estimate?; dueDate?; parentId?; archived?; allowZeroEstimate? }>; parallel?; dry_run? }.\n\nHUMAN-READABLE INPUTS (use workspace_metadata to discover valid values):\n- priority: 0-4 or \"Urgent\"/\"High\"/\"Medium\"/\"Low\" (standardized)\n- stateType: \"completed\"/\"started\"/\"canceled\" (standardized)\n- stateName/labelNames/assigneeName/projectName: workspace-specific\n\nBehavior: Only send fields you intend to change. Empty strings ignored; estimate<=0 ignored unless allowZeroEstimate=true. add/removeLabelIds/Names adjust labels incrementally.\nExample: { items: [{ id: 'ABC-123', stateType: 'completed', priority: 'High' }] }. Returns: per-item results. Next: 'get_issues' for verification.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Issue UUID or identifier (e.g. ENG-123). Required."
+                },
+                "title": {
+                  "type": "string",
+                  "description": "New title."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "New markdown description."
+                },
+                "stateId": {
+                  "type": "string",
+                  "description": "Workflow state UUID. Or use stateName/stateType for name-based lookup."
+                },
+                "stateName": {
+                  "type": "string",
+                  "description": "State name from issue's team. Use workspace_metadata to see available names."
+                },
+                "stateType": {
+                  "type": "string",
+                  "enum": [
+                    "backlog",
+                    "unstarted",
+                    "started",
+                    "completed",
+                    "canceled"
+                  ],
+                  "description": "State type. Finds first matching state."
+                },
+                "labelIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Replace all labels with these UUIDs."
+                },
+                "labelNames": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Replace all labels with these names from your workspace."
+                },
+                "addLabelIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Add these label UUIDs (incremental)."
+                },
+                "addLabelNames": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Add these label names (incremental)."
+                },
+                "removeLabelIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Remove these label UUIDs (incremental)."
+                },
+                "removeLabelNames": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Remove these label names (incremental)."
+                },
+                "assigneeId": {
+                  "type": "string",
+                  "description": "New assignee user UUID."
+                },
+                "assigneeName": {
+                  "type": "string",
+                  "description": "User name (fuzzy match). Partial names work."
+                },
+                "assigneeEmail": {
+                  "type": "string",
+                  "description": "User email to assign (exact match, case-insensitive)."
+                },
+                "projectId": {
+                  "type": "string",
+                  "description": "New project UUID."
+                },
+                "projectName": {
+                  "type": "string",
+                  "description": "Project name. Resolved to projectId."
+                },
+                "priority": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4
+                    },
+                    {
+                      "type": "string",
+                      "enum": [
+                        "None",
+                        "Urgent",
+                        "High",
+                        "Medium",
+                        "Normal",
+                        "Low",
+                        "none",
+                        "urgent",
+                        "high",
+                        "medium",
+                        "normal",
+                        "low"
+                      ]
+                    }
+                  ],
+                  "description": "Priority: 0-4 or \"None\"/\"Urgent\"/\"High\"/\"Medium\"/\"Low\"."
+                },
+                "estimate": {
+                  "type": "number",
+                  "description": "New estimate / story points."
+                },
+                "allowZeroEstimate": {
+                  "type": "boolean",
+                  "description": "If true and estimate=0, sends 0. Otherwise zero is omitted."
+                },
+                "dueDate": {
+                  "type": "string",
+                  "description": "New due date (YYYY-MM-DD) or empty string to clear."
+                },
+                "parentId": {
+                  "type": "string",
+                  "description": "New parent issue UUID."
+                },
+                "archived": {
+                  "type": "boolean",
+                  "description": "Set true to archive, false to unarchive."
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "description": "Issues to update. Batch up to 50."
+          },
+          "parallel": {
+            "type": "boolean",
+            "description": "Run in parallel. Default: sequential."
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "If true, validate but do not update."
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "list_teams",
+      "description": "List teams in the workspace. Inputs: limit?, cursor?.\nReturns: { items: Array<{ id, key?, name }>, cursor?, nextCursor?, limit? }. Next: Use team ids with 'workspace_metadata' (workflowStatesByTeam) and 'list_issues'.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "cursor": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "list_users",
+      "description": "List users in the workspace. Inputs: limit?, cursor?.\nReturns: { items: Array<{ id, name?, email?, displayName?, avatarUrl? }>, cursor?, nextCursor?, limit? }. Next: Use user ids in 'update_issues' (assigneeId).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "cursor": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "list_comments",
+      "description": "List comments for an issue. Inputs: { issueId, limit?, cursor? }.\nReturns: { items[], cursor?, nextCursor?, limit? } where items include id, body, url?, createdAt, updatedAt?, user{id,name?}. Next: Use add_comments to add context or mention teammates.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "cursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "issueId"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "add_comments",
+      "description": "Add one or more comments to issues. Inputs: { items: Array<{ issueId: string; body: string }>, parallel?, dry_run? }.\nReturns: per-item results and a summary. Next: Use list_comments to verify and retrieve the comment URLs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "issueId": {
+                  "type": "string"
+                },
+                "body": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "issueId",
+                "body"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 50
+          },
+          "parallel": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "update_comments",
+      "description": "Update existing comment bodies. Cannot delete comments (by design). Inputs: { items: Array<{ id: string; body: string }> }.\nReturns: per-item results and a summary. Next: Use list_comments to verify changes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Comment ID to update."
+                },
+                "body": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "New comment body (cannot be empty)."
+                }
+              },
+              "required": [
+                "id",
+                "body"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 50
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "list_cycles",
+      "description": "List cycles for a team (only if team.cyclesEnabled=true). Inputs: { teamId, includeArchived?, orderBy?(updatedAt|createdAt), limit?, cursor? }.\nReturns: { items[], cursor?, nextCursor?, limit? } where items include id, name?, number?, startsAt?, endsAt?, completedAt?, teamId, status?. Next: Use teamId from 'workspace_metadata' to target the right team; avoid this tool if cyclesEnabled=false.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "includeArchived": {
+            "type": "boolean"
+          },
+          "orderBy": {
+            "type": "string",
+            "enum": [
+              "updatedAt",
+              "createdAt"
+            ]
+          }
+        },
+        "required": [
+          "teamId"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "list_projects",
+      "description": "List projects with filtering and pagination. Inputs: filter? (ProjectFilter: id/state/team/lead/targetDate), includeArchived?, limit?, cursor?. For a single project, set filter.id.eq and limit=1.\nReturns: { items[], cursor?, nextCursor?, limit? } where items include id, name, state, leadId?, teamId?, targetDate?, description?. Next: Use 'update_projects' to modify or 'list_issues' with projectId to find issues.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Max results. Default: 20."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from previous response."
+          },
+          "filter": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "GraphQL-style ProjectFilter. Structure: { field: { comparator: value } }. Examples: { id: { eq: 'PROJECT_UUID' } } for single project, { state: { eq: 'started' } }, { team: { id: { eq: 'TEAM_UUID' } } }, { lead: { id: { eq: 'USER_UUID' } } }, { targetDate: { lt: '2025-01-01', gt: '2024-01-01' } }."
+          },
+          "includeArchived": {
+            "type": "boolean",
+            "description": "Include archived projects. Default: false."
+          }
+        },
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "create_projects",
+      "description": "Create multiple projects in one call. Inputs: { items: Array<{ name: string; teamId?: string; leadId?: string; description?: string; targetDate?: string; state?: string }> }.\nNotes: team association uses teamIds internally; provide teamId to attach initially. Returns: per-item results and a summary.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Project name. Required."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Markdown description."
+                },
+                "teamId": {
+                  "type": "string",
+                  "description": "Team UUID to associate."
+                },
+                "leadId": {
+                  "type": "string",
+                  "description": "Lead user UUID."
+                },
+                "targetDate": {
+                  "type": "string",
+                  "description": "Target date (YYYY-MM-DD)."
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "description": "Projects to create. Use update_projects to change state after creation."
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "update_projects",
+      "description": "Update multiple projects in one call. Inputs: { items: Array<{ id: string; name?: string; description?: string; targetDate?: string; state?: string; leadId?: string; archived?: boolean }> }.\nReturns: per-item results and a summary. Next: verify with 'list_projects' (filter.id.eq, limit=1); discover via 'list_projects'.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Project UUID. Required."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "New project name."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "New markdown description."
+                },
+                "leadId": {
+                  "type": "string",
+                  "description": "New lead user UUID."
+                },
+                "targetDate": {
+                  "type": "string",
+                  "description": "New target date (YYYY-MM-DD)."
+                },
+                "state": {
+                  "type": "string",
+                  "description": "New state: 'planned', 'started', 'paused', 'completed', 'canceled'."
+                },
+                "archived": {
+                  "type": "boolean",
+                  "description": "Set true to archive, false to unarchive."
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 50,
+            "description": "Projects to update."
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false
+      }
+    },
+    {
+      "name": "show_issues_ui",
+      "description": "Opens an interactive Linear issues dashboard. The UI displays issues in a dark, minimalistic Linear-style interface where users can browse, filter, and manage issues visually. Use this when the user wants to see their issues in a visual interface rather than text output.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string",
+            "description": "Team ID to pre-filter issues"
+          },
+          "stateType": {
+            "type": "string",
+            "enum": [
+              "started",
+              "unstarted",
+              "backlog",
+              "completed",
+              "cancelled"
+            ],
+            "description": "State type to pre-filter"
+          },
+          "assignedToMe": {
+            "type": "boolean",
+            "description": "Show only my issues"
+          }
+        },
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "title": "Show Issues Dashboard",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    }
+  ],
+  "prompts": {
+    "error": "MCP error -32601: Method not found"
+  },
+  "resources": [
+    {
+      "name": "Linear Issues",
+      "uri": "ui://linear/issues",
+      "description": "Interactive Linear issues dashboard",
+      "mimeType": "text/html"
+    }
+  ],
+  "resourceTemplates": []
+}

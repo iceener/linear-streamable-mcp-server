@@ -2,24 +2,33 @@
  * Update Issues tool - batch update issues in Linear.
  */
 
-import { z } from 'zod';
-import { toolsMetadata } from '../../../config/metadata.js';
+import { z } from 'zod/v4';
 import { config } from '../../../config/env.js';
-import { UpdateIssuesOutputSchema } from '../../../schemas/outputs.js';
+import { toolsMetadata } from '../../../config/metadata.js';
+import {
+  type BatchResultSchema,
+  UpdateIssuesOutputSchema,
+} from '../../../schemas/outputs.js';
 import { getLinearClient } from '../../../services/linear/client.js';
-import { makeConcurrencyGate, withRetry, delay } from '../../../utils/limits.js';
+import { delay, makeConcurrencyGate, withRetry } from '../../../utils/limits.js';
 import { logger } from '../../../utils/logger.js';
 import { summarizeBatch } from '../../../utils/messages.js';
+import {
+  getIssueTeamId,
+  resolveLabels,
+  resolvePriority,
+  resolveProject,
+  resolveState,
+} from '../../../utils/resolvers.js';
 import { resolveAssignee } from '../../../utils/user-resolver.js';
-import { resolvePriority, resolveState, resolveLabels, resolveProject, getIssueTeamId } from '../../../utils/resolvers.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
 import {
-  createTeamSettingsCache,
-  validateEstimate,
-  validatePriority,
   captureIssueSnapshot,
   computeFieldChanges,
+  createTeamSettingsCache,
   formatDiffLine,
+  validateEstimate,
+  validatePriority,
 } from './shared/index.js';
 
 const IssueUpdateItem = z.object({
@@ -34,21 +43,38 @@ const IssueUpdateItem = z.object({
   stateName: z
     .string()
     .optional()
-    .describe('State name from issue\'s team. Use workspace_metadata to see available names.'),
+    .describe(
+      "State name from issue's team. Use workspace_metadata to see available names.",
+    ),
   stateType: z
     .enum(['backlog', 'unstarted', 'started', 'completed', 'canceled'])
     .optional()
     .describe('State type. Finds first matching state.'),
   // Labels - UUIDs or names (use workspace_metadata to see available labels)
-  labelIds: z.array(z.string()).optional().describe('Replace all labels with these UUIDs.'),
+  labelIds: z
+    .array(z.string())
+    .optional()
+    .describe('Replace all labels with these UUIDs.'),
   labelNames: z
     .array(z.string())
     .optional()
     .describe('Replace all labels with these names from your workspace.'),
-  addLabelIds: z.array(z.string()).optional().describe('Add these label UUIDs (incremental).'),
-  addLabelNames: z.array(z.string()).optional().describe('Add these label names (incremental).'),
-  removeLabelIds: z.array(z.string()).optional().describe('Remove these label UUIDs (incremental).'),
-  removeLabelNames: z.array(z.string()).optional().describe('Remove these label names (incremental).'),
+  addLabelIds: z
+    .array(z.string())
+    .optional()
+    .describe('Add these label UUIDs (incremental).'),
+  addLabelNames: z
+    .array(z.string())
+    .optional()
+    .describe('Add these label names (incremental).'),
+  removeLabelIds: z
+    .array(z.string())
+    .optional()
+    .describe('Remove these label UUIDs (incremental).'),
+  removeLabelNames: z
+    .array(z.string())
+    .optional()
+    .describe('Remove these label names (incremental).'),
   // Assignee - UUID, name, or email (use workspace_metadata to list users)
   assigneeId: z.string().optional().describe('New assignee user UUID.'),
   assigneeName: z
@@ -66,7 +92,20 @@ const IssueUpdateItem = z.object({
   priority: z
     .union([
       z.number().int().min(0).max(4),
-      z.enum(['None', 'Urgent', 'High', 'Medium', 'Normal', 'Low', 'none', 'urgent', 'high', 'medium', 'normal', 'low']),
+      z.enum([
+        'None',
+        'Urgent',
+        'High',
+        'Medium',
+        'Normal',
+        'Low',
+        'none',
+        'urgent',
+        'high',
+        'medium',
+        'normal',
+        'low',
+      ]),
     ])
     .optional()
     .describe('Priority: 0-4 or "None"/"Urgent"/"High"/"Medium"/"Low".'),
@@ -75,13 +114,20 @@ const IssueUpdateItem = z.object({
     .boolean()
     .optional()
     .describe('If true and estimate=0, sends 0. Otherwise zero is omitted.'),
-  dueDate: z.string().optional().describe('New due date (YYYY-MM-DD) or empty string to clear.'),
+  dueDate: z
+    .string()
+    .optional()
+    .describe('New due date (YYYY-MM-DD) or empty string to clear.'),
   parentId: z.string().optional().describe('New parent issue UUID.'),
   archived: z.boolean().optional().describe('Set true to archive, false to unarchive.'),
 });
 
 const InputSchema = z.object({
-  items: z.array(IssueUpdateItem).min(1).max(50).describe('Issues to update. Batch up to 50.'),
+  items: z
+    .array(IssueUpdateItem)
+    .min(1)
+    .max(50)
+    .describe('Issues to update. Batch up to 50.'),
   parallel: z.boolean().optional().describe('Run in parallel. Default: sequential.'),
   dry_run: z.boolean().optional().describe('If true, validate but do not update.'),
 });
@@ -91,6 +137,7 @@ export const updateIssuesTool = defineTool({
   title: toolsMetadata.update_issues.title,
   description: toolsMetadata.update_issues.description,
   inputSchema: InputSchema,
+  outputSchema: UpdateIssuesOutputSchema,
   annotations: {
     readOnlyHint: false,
     destructiveHint: false,
@@ -99,12 +146,24 @@ export const updateIssuesTool = defineTool({
   handler: async (args, context: ToolContext): Promise<ToolResult> => {
     // Handle dry_run mode
     if (args.dry_run) {
-      const validated = args.items.map((it, index) => ({
+      const validated = args.items.map((item, index) => ({
+        input: { id: item.id },
+        success: true,
+        validated: true,
+        id: item.id,
         index,
         ok: true,
-        id: it.id,
-        validated: true,
       }));
+      const structured = UpdateIssuesOutputSchema.parse({
+        results: validated,
+        summary: {
+          total: args.items.length,
+          succeeded: args.items.length,
+          failed: 0,
+          ok: args.items.length,
+        },
+        dry_run: true,
+      });
       return {
         content: [
           {
@@ -112,25 +171,17 @@ export const updateIssuesTool = defineTool({
             text: `Dry run: ${args.items.length} update(s) validated successfully. No changes made.`,
           },
         ],
-        structuredContent: {
-          results: validated,
-          summary: { ok: args.items.length, failed: 0 },
-          dry_run: true,
-        },
+        structuredContent: structured,
       };
     }
 
     const client = await getLinearClient(context);
-    const gate = makeConcurrencyGate(config.CONCURRENCY_LIMIT);
+    const gate = makeConcurrencyGate(
+      context.concurrencyLimit ?? config.CONCURRENCY_LIMIT,
+    );
     const { items } = args;
 
-    const results: {
-      index: number;
-      ok: boolean;
-      id?: string;
-      error?: string;
-      code?: string;
-    }[] = [];
+    const results: Array<z.input<typeof BatchResultSchema>> = [];
 
     const teamAllowZeroCache = createTeamSettingsCache();
     const diffLines: string[] = [];
@@ -188,12 +239,22 @@ export const updateIssuesTool = defineTool({
           payloadInput.labelIds = it.labelIds;
         } else if (Array.isArray(it.labelNames) && it.labelNames.length > 0) {
           if (!teamId) {
-            results.push({ index: i, ok: false, error: 'Cannot resolve labels: failed to get issue team', code: 'TEAM_RESOLUTION_FAILED' });
+            results.push({
+              index: i,
+              ok: false,
+              error: 'Cannot resolve labels: failed to get issue team',
+              code: 'TEAM_RESOLUTION_FAILED',
+            });
             continue;
           }
           const labelsResult = await resolveLabels(client, teamId, it.labelNames);
           if (!labelsResult.success) {
-            results.push({ index: i, ok: false, error: labelsResult.error, code: 'LABEL_RESOLUTION_FAILED' });
+            results.push({
+              index: i,
+              ok: false,
+              error: labelsResult.error,
+              code: 'LABEL_RESOLUTION_FAILED',
+            });
             continue;
           }
           payloadInput.labelIds = labelsResult.value;
@@ -204,12 +265,22 @@ export const updateIssuesTool = defineTool({
           payloadInput.addedLabelIds = it.addLabelIds;
         } else if (Array.isArray(it.addLabelNames) && it.addLabelNames.length > 0) {
           if (!teamId) {
-            results.push({ index: i, ok: false, error: 'Cannot resolve labels: failed to get issue team', code: 'TEAM_RESOLUTION_FAILED' });
+            results.push({
+              index: i,
+              ok: false,
+              error: 'Cannot resolve labels: failed to get issue team',
+              code: 'TEAM_RESOLUTION_FAILED',
+            });
             continue;
           }
           const addResult = await resolveLabels(client, teamId, it.addLabelNames);
           if (!addResult.success) {
-            results.push({ index: i, ok: false, error: addResult.error, code: 'LABEL_RESOLUTION_FAILED' });
+            results.push({
+              index: i,
+              ok: false,
+              error: addResult.error,
+              code: 'LABEL_RESOLUTION_FAILED',
+            });
             continue;
           }
           payloadInput.addedLabelIds = addResult.value;
@@ -218,14 +289,27 @@ export const updateIssuesTool = defineTool({
         // Resolve removeLabelNames
         if (Array.isArray(it.removeLabelIds) && it.removeLabelIds.length > 0) {
           payloadInput.removedLabelIds = it.removeLabelIds;
-        } else if (Array.isArray(it.removeLabelNames) && it.removeLabelNames.length > 0) {
+        } else if (
+          Array.isArray(it.removeLabelNames) &&
+          it.removeLabelNames.length > 0
+        ) {
           if (!teamId) {
-            results.push({ index: i, ok: false, error: 'Cannot resolve labels: failed to get issue team', code: 'TEAM_RESOLUTION_FAILED' });
+            results.push({
+              index: i,
+              ok: false,
+              error: 'Cannot resolve labels: failed to get issue team',
+              code: 'TEAM_RESOLUTION_FAILED',
+            });
             continue;
           }
           const removeResult = await resolveLabels(client, teamId, it.removeLabelNames);
           if (!removeResult.success) {
-            results.push({ index: i, ok: false, error: removeResult.error, code: 'LABEL_RESOLUTION_FAILED' });
+            results.push({
+              index: i,
+              ok: false,
+              error: removeResult.error,
+              code: 'LABEL_RESOLUTION_FAILED',
+            });
             continue;
           }
           payloadInput.removedLabelIds = removeResult.value;
@@ -260,7 +344,12 @@ export const updateIssuesTool = defineTool({
         } else if (it.projectName) {
           const projectResult = await resolveProject(client, it.projectName);
           if (!projectResult.success) {
-            results.push({ index: i, ok: false, error: projectResult.error, code: 'PROJECT_RESOLUTION_FAILED' });
+            results.push({
+              index: i,
+              ok: false,
+              error: projectResult.error,
+              code: 'PROJECT_RESOLUTION_FAILED',
+            });
             continue;
           }
           payloadInput.projectId = projectResult.value;
@@ -270,7 +359,12 @@ export const updateIssuesTool = defineTool({
         if (it.priority !== undefined) {
           const priorityResult = resolvePriority(it.priority);
           if (!priorityResult.success) {
-            results.push({ index: i, ok: false, error: priorityResult.error, code: 'PRIORITY_INVALID' });
+            results.push({
+              index: i,
+              ok: false,
+              error: priorityResult.error,
+              code: 'PRIORITY_INVALID',
+            });
             continue;
           }
           const validatedPriority = validatePriority(priorityResult.value);
@@ -329,8 +423,12 @@ export const updateIssuesTool = defineTool({
         if (it.addLabelIds?.length || it.removeLabelIds?.length) {
           const issue = await gate(() => client.issue(it.id));
           const current = new Set((await issue.labels()).nodes.map((l) => l.id));
-          it.addLabelIds?.forEach((id) => current.add(id));
-          it.removeLabelIds?.forEach((id) => current.delete(id));
+          it.addLabelIds?.forEach((id) => {
+            current.add(id);
+          });
+          it.removeLabelIds?.forEach((id) => {
+            current.delete(id);
+          });
           await (args.parallel === true
             ? client.updateIssue(it.id, { labelIds: Array.from(current) })
             : gate(() => client.updateIssue(it.id, { labelIds: Array.from(current) })));
@@ -390,7 +488,11 @@ export const updateIssuesTool = defineTool({
         // Compute changes using shared utility
         if (afterSnapshot) {
           const requestedFields = new Set(Object.keys(it));
-          const changes = computeFieldChanges(beforeSnapshot, afterSnapshot, requestedFields);
+          const changes = computeFieldChanges(
+            beforeSnapshot,
+            afterSnapshot,
+            requestedFields,
+          );
 
           // Format diff using shared utility
           if (Object.keys(changes).length > 0) {
@@ -419,9 +521,9 @@ export const updateIssuesTool = defineTool({
             code: 'LINEAR_UPDATE_ERROR',
             message: (error as Error).message,
             suggestions: [
-              "Verify the issue ID exists with list_issues or get_issues.",
-              "Check that stateId exists in workflowStatesByTeam.",
-              "Use list_users to find valid assigneeId.",
+              'Verify the issue ID exists with list_issues or get_issues.',
+              'Check that stateId exists in workflowStatesByTeam.',
+              'Use list_users to find valid assigneeId.',
             ],
             retryable: false,
           },
@@ -448,7 +550,7 @@ export const updateIssuesTool = defineTool({
       'Use list_issues or get_issues to verify changes.',
     ];
     if (failed > 0) {
-      metaNextSteps.push("Check error.suggestions for recovery hints.");
+      metaNextSteps.push('Check error.suggestions for recovery hints.');
     }
 
     const meta = {
@@ -468,9 +570,19 @@ export const updateIssuesTool = defineTool({
         const err = r.error;
         if (typeof err === 'object' && err !== null) {
           const errObj = err as { message?: string; code?: string };
-          return { index: r.index, id: r.id, error: errObj.message ?? String(err), code: errObj.code };
+          return {
+            index: r.index ?? -1,
+            id: r.id,
+            error: errObj.message ?? String(err),
+            code: errObj.code,
+          };
         }
-        return { index: r.index, id: r.id, error: String(err ?? ''), code: undefined };
+        return {
+          index: r.index ?? -1,
+          id: r.id,
+          error: String(err ?? ''),
+          code: undefined,
+        };
       });
 
     const archivedRequested = items.some((x) => typeof x.archived === 'boolean');
@@ -488,28 +600,21 @@ export const updateIssuesTool = defineTool({
     const nextStep = archivedRequested
       ? 'Tip: Use list_issues with includeArchived: true to verify archived issues.'
       : 'Tip: Use list_issues to verify changes.';
-    
+
     const textParts = [summaryLine];
     if (diffLines.length > 0) {
       textParts.push(diffLines.join('\n'));
     }
     textParts.push(nextStep);
-    
+
     const text = textParts.join('\n\n');
 
     const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text }];
 
-    if (config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
+    if (context.includeJsonInContent ?? config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
       parts.push({ type: 'text', text: JSON.stringify(structured) });
     }
 
     return { content: parts, structuredContent: structured };
   },
 });
-
-
-
-
-
-
-

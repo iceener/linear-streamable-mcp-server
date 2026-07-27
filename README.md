@@ -7,7 +7,7 @@ Author: [overment](https://x.com/_overment)
 > [!WARNING]
 > You connect this server to your MCP client at your own responsibility. Language models can make mistakes, misinterpret instructions, or perform unintended actions. Review tool outputs, verify changes (e.g., with `list_issues`), and prefer small, incremental writes.
 >
-> The HTTP/OAuth layer is designed for convenience during development, not production-grade security. If deploying remotely, harden it: proper token validation, secure storage, TLS termination, strict CORS/origin checks, rate limiting, audit logging, and compliance with Linear's terms.
+> Remote deployments must use HTTPS, strict Host/Origin allowlists, encrypted token storage, and production observability. The server validates opaque MCP Resource Server tokens against its stored mapping and never forwards an inbound MCP bearer token to Linear.
 
 ## Comparison
 
@@ -18,8 +18,13 @@ Below is a comparison between the official Linear MCP (top) and this MCP (bottom
 ## Notice
 
 This repo works in two ways:
-- As a **Node/Hono server** for local workflows
-- As a **Cloudflare Worker** for remote interactions
+- As a fetch-native **Bun server** for local workflows
+- As a fetch-native **Cloudflare Worker** for remote interactions
+
+> [!IMPORTANT]
+> This branch targets the `2026-07-28` protocol candidate with exact `@modelcontextprotocol/server@2.0.0-beta.5` and `@modelcontextprotocol/client@2.0.0-beta.5`. It is release-candidate validation, not a claim of final specification conformance.
+
+Both runtimes create one MCP handler per process/isolate and a fresh `McpServer` for every request. Modern requests are sessionless; legacy `2025-11-25` clients use the SDK's stateless fallback.
 
 For production Cloudflare deployments, see [Remote Model Context Protocol servers (MCP)](https://blog.cloudflare.com/remote-model-context-protocol-servers-mcp).
 
@@ -45,7 +50,7 @@ In short, it's not a direct mirror of Linear's API — it's tailored so AI agent
 - ✅ **Cycles** — Browse sprint/cycle planning
 - ✅ **Comments** — List and add comments on issues
 - ✅ **OAuth 2.1** — Secure PKCE flow with RS token mapping
-- ✅ **Dual Runtime** — Node.js/Bun or Cloudflare Workers
+- ✅ **Dual Runtime** — Bun or Cloudflare Workers
 - ✅ **Production Ready** — Encrypted token storage, rate limiting, multi-user support
 
 ### Design Principles
@@ -59,7 +64,7 @@ In short, it's not a direct mirror of Linear's API — it's tailored so AI agent
 
 ## Installation
 
-Prerequisites: [Bun](https://bun.sh/), [Node.js 24+](https://nodejs.org), [Linear](https://linear.app) account. For remote: a [Cloudflare](https://dash.cloudflare.com) account.
+Prerequisites: [Bun](https://bun.sh/), a [Linear](https://linear.app) account, and—when deploying remotely—a [Cloudflare](https://dash.cloudflare.com) account.
 
 ### Ways to Run (Pick One)
 
@@ -85,34 +90,17 @@ Edit `.env`:
 
 ```env
 PORT=3000
-AUTH_STRATEGY=bearer
-BEARER_TOKEN=lin_api_xxxx  # Your Linear API key
+AUTH_ENABLED=false
+AUTH_STRATEGY=none
+LINEAR_ACCESS_TOKEN=lin_api_xxxx
 ```
 
 ```bash
-bun dev
+bun run dev
 # MCP: http://127.0.0.1:3000/mcp
 ```
 
-Connect to your MCP client:
-
-**Claude Desktop / Cursor:**
-
-```json
-{
-  "mcpServers": {
-    "linear": {
-      "command": "bunx",
-      "args": [
-        "mcp-remote",
-        "http://localhost:3000/mcp",
-        "--header",
-        "Authorization: Bearer ${LINEAR_API_KEY}"
-      ]
-    }
-  }
-}
-```
+Connect the MCP client to `http://localhost:3000/mcp` without forwarding the Linear token as an MCP bearer credential. `LINEAR_ACCESS_TOKEN` is deployment-scoped provider authorization; it is not MCP caller authentication.
 
 ---
 
@@ -173,8 +161,6 @@ bun dev
 Enable these flags to require RS-minted bearer tokens:
 
 ```env
-AUTH_REQUIRE_RS=true
-AUTH_ALLOW_DIRECT_BEARER=false
 ```
 
 When enabled, requests without `Authorization` or with non-mapped tokens receive `401` with `WWW-Authenticate` so OAuth can start.
@@ -184,15 +170,15 @@ When enabled, requests without `Authorization` or with non-mapped tokens receive
 ### 3. Cloudflare Worker (Local Dev)
 
 ```bash
-bun x wrangler dev --local | cat
+bun run dev:worker
 ```
 
-With OAuth:
+With OAuth, configure the Linear application credentials as Worker secrets:
 
 ```bash
-bun x wrangler secret put PROVIDER_CLIENT_ID
-bun x wrangler secret put PROVIDER_CLIENT_SECRET
-bun x wrangler dev --local | cat
+bunx wrangler secret put PROVIDER_CLIENT_ID --config wrangler.jsonc
+bunx wrangler secret put PROVIDER_CLIENT_SECRET --config wrangler.jsonc
+bun run dev:worker
 ```
 
 Endpoint: `http://127.0.0.1:8787/mcp`
@@ -204,32 +190,32 @@ Endpoint: `http://127.0.0.1:8787/mcp`
 1. Create KV namespace:
 
 ```bash
-bun x wrangler kv:namespace create TOKENS
+bunx wrangler kv namespace create TOKENS --config wrangler.jsonc
 ```
 
-2. Update `wrangler.toml` with KV namespace ID
+2. Configure the `TOKENS` binding in `wrangler.jsonc` (or let Wrangler provision it)
 
 3. Set secrets:
 
 ```bash
-bun x wrangler secret put PROVIDER_CLIENT_ID
-bun x wrangler secret put PROVIDER_CLIENT_SECRET
+bunx wrangler secret put PROVIDER_CLIENT_ID --config wrangler.jsonc
+bunx wrangler secret put PROVIDER_CLIENT_SECRET --config wrangler.jsonc
 
 # Generate encryption key (32-byte base64url):
 openssl rand -base64 32 | tr -d '=' | tr '+/' '-_'
-bun x wrangler secret put RS_TOKENS_ENC_KEY
+bunx wrangler secret put RS_TOKENS_ENC_KEY --config wrangler.jsonc
 ```
 
 > **Note:** `RS_TOKENS_ENC_KEY` encrypts OAuth tokens stored in KV (AES-256-GCM).
 
-4. Update redirect URI and allowlist in `wrangler.toml`
+4. Update the redirect URI and allowlist in `wrangler.jsonc`
 
-5. Add Workers URL to your Linear OAuth app's redirect URIs
+5. Set `MCP_PUBLIC_URL`, Host/Origin allowlists, and the Worker callback URL in `wrangler.jsonc`; add the callback to the Linear OAuth app
 
 6. Deploy:
 
 ```bash
-bun x wrangler deploy
+bun run deploy
 ```
 
 Endpoint: `https://<worker-name>.<account>.workers.dev/mcp`
@@ -301,7 +287,7 @@ Search and filter issues with powerful GraphQL filtering.
   q?: string;                  // Title search tokens
   keywords?: string[];         // Alternative to q
   includeArchived?: boolean;
-  orderBy?: "updatedAt" | "createdAt" | "priority";
+  orderBy?: "updatedAt" | "createdAt";
   limit?: number;              // 1-100
   cursor?: string;             // Pagination
   fullDescriptions?: boolean;
@@ -463,7 +449,7 @@ Updated issues: 2 / 2. OK: RELEASE_UUID, MEETING_UUID
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/mcp` | POST | MCP JSON-RPC 2.0 |
-| `/mcp` | GET | SSE stream (Node.js only) |
+| `/mcp` | GET / DELETE | `405` (modern and stateless legacy HTTP do not expose session endpoints) |
 | `/health` | GET | Health check |
 | `/.well-known/oauth-authorization-server` | GET | OAuth AS metadata |
 | `/.well-known/oauth-protected-resource` | GET | OAuth RS metadata |
@@ -479,7 +465,7 @@ OAuth (PORT+1):
 ## Development
 
 ```bash
-bun dev           # Start with hot reload
+bun run dev       # Start with hot reload
 bun run typecheck # TypeScript check
 bun run lint      # Lint code
 bun run build     # Production build
@@ -497,7 +483,7 @@ The project uses a two-layer testing strategy:
 Fast tests using mocked Linear API responses. Tests all logic, validation, and edge cases without network calls.
 
 ```bash
-bun test              # Run all unit tests (~4 seconds)
+bun run test          # Run unit, protocol, storage, and configured live tests
 bun run test:watch    # Watch mode
 bun run test:coverage # With coverage report
 ```
@@ -540,6 +526,12 @@ bun run test:integration  # ~45 seconds
 
 Run unit tests on every change. Run integration tests before releases or after SDK upgrades.
 
+### MCP v2 validation
+
+`bun run test:protocol` uses the official beta.5 client in modern and legacy modes. It verifies the 15-tool snapshot and order, structured outputs, mocked GraphQL success/failure, the issues UI resource, cache hints, subscriptions, cancellation, transport security, OAuth metadata/errors, provider-token separation, and concurrent principal isolation.
+
+The dated protocol is still a release candidate. Re-run the complete Bun and workerd matrix against final packages before claiming final conformance.
+
 ---
 
 ## Architecture
@@ -548,7 +540,7 @@ Run unit tests on every change. Run integration tests before releases or after S
 src/
 ├── shared/
 │   ├── tools/
-│   │   └── linear/         # Tool definitions (work in Node + Workers)
+│   │   └── linear/         # Tool definitions (work in Bun + Workers)
 │   │       ├── workspace-metadata.ts
 │   │       ├── list-issues.ts
 │   │       ├── create-issues.ts
@@ -567,11 +559,17 @@ src/
 │   └── outputs.ts          # Zod output schemas
 ├── config/
 │   └── metadata.ts         # Server & tool descriptions
-├── index.ts                # Node.js entry
+├── index.ts                # Bun entry
 └── worker.ts               # Workers entry
 ```
 
 ---
+
+## Credential and rollback model
+
+The MCP access token, Linear access token, and Linear refresh token are separate credentials. The opaque MCP verifier places only `linearProviderAccessToken` in `AuthInfo.extra`; tools never read or forward `authInfo.token`, and refresh tokens remain in file/KV storage.
+
+The migration does not change OAuth record shapes or KV key names. File records remain `{ version: 1, encrypted, records }`, and KV mappings remain under `rs:access:*` and `rs:refresh:*`. Rolling back to the recorded pre-v2 SHA can read records written by this candidate, and this candidate can read pre-v2 records. No destructive storage migration is required.
 
 ## Troubleshooting
 

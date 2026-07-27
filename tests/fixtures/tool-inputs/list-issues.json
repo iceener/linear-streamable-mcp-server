@@ -93,18 +93,17 @@
     {
       "name": "limit_too_high",
       "input": { "limit": 500 },
-      "expectedError": "Number must be less than or equal to 100"
+      "expectedError": "Too big: expected number to be <=100"
     },
     {
       "name": "limit_zero",
       "input": { "limit": 0 },
-      "expectedError": "Number must be greater than or equal to 1"
+      "expectedError": "Too small: expected number to be >=1"
     },
     {
       "name": "invalid_order_by",
       "input": { "orderBy": "invalid" },
-      "expectedError": "Invalid enum value"
+      "expectedError": "Invalid option"
     }
   ]
 }
-

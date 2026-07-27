@@ -2,19 +2,24 @@
  * Projects tools - list, create, and update projects.
  */
 
-import { z } from 'zod';
-import { toolsMetadata } from '../../../config/metadata.js';
+import { z } from 'zod/v4';
 import { config } from '../../../config/env.js';
+import { toolsMetadata } from '../../../config/metadata.js';
 import {
+  type BatchResultSchema,
   CreateProjectsOutputSchema,
   ListProjectsOutputSchema,
   UpdateProjectsOutputSchema,
 } from '../../../schemas/outputs.js';
 import { getLinearClient } from '../../../services/linear/client.js';
-import { makeConcurrencyGate, withRetry, delay } from '../../../utils/limits.js';
+import { delay, makeConcurrencyGate, withRetry } from '../../../utils/limits.js';
 import { logger } from '../../../utils/logger.js';
 import { mapProjectNodeToListItem } from '../../../utils/mappers.js';
-import { summarizeBatch, summarizeList, previewLinesFromItems } from '../../../utils/messages.js';
+import {
+  previewLinesFromItems,
+  summarizeBatch,
+  summarizeList,
+} from '../../../utils/messages.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
 
 // List Projects
@@ -28,7 +33,7 @@ const ListProjectsInputSchema = z.object({
     .describe('Max results. Default: 20.'),
   cursor: z.string().optional().describe('Pagination cursor from previous response.'),
   filter: z
-    .record(z.any())
+    .record(z.string(), z.any())
     .optional()
     .describe(
       'GraphQL-style ProjectFilter. Structure: { field: { comparator: value } }. ' +
@@ -38,7 +43,10 @@ const ListProjectsInputSchema = z.object({
         "{ lead: { id: { eq: 'USER_UUID' } } }, " +
         "{ targetDate: { lt: '2025-01-01', gt: '2024-01-01' } }.",
     ),
-  includeArchived: z.boolean().optional().describe('Include archived projects. Default: false.'),
+  includeArchived: z
+    .boolean()
+    .optional()
+    .describe('Include archived projects. Default: false.'),
 });
 
 export const listProjectsTool = defineTool({
@@ -46,6 +54,7 @@ export const listProjectsTool = defineTool({
   title: toolsMetadata.list_projects.title,
   description: toolsMetadata.list_projects.description,
   inputSchema: ListProjectsInputSchema,
+  outputSchema: ListProjectsOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -56,19 +65,19 @@ export const listProjectsTool = defineTool({
     const first = args.limit ?? 20;
     const after = args.cursor;
     const filter = args.filter as Record<string, unknown> | undefined;
-    
+
     const conn = await client.projects({
       first,
       after,
       filter: filter as Record<string, unknown> | undefined,
       includeArchived: args.includeArchived,
     });
-    
+
     const items = conn.nodes.map((p) => mapProjectNodeToListItem(p));
-    
+
     const pageInfo = conn.pageInfo;
     const hasMore = pageInfo?.hasNextPage ?? false;
-    const nextCursor = hasMore ? pageInfo?.endCursor ?? undefined : undefined;
+    const nextCursor = hasMore ? (pageInfo?.endCursor ?? undefined) : undefined;
 
     // Build query echo
     const query = {
@@ -105,13 +114,13 @@ export const listProjectsTool = defineTool({
       nextCursor,
       limit: first,
     });
-    
+
     const preview = previewLinesFromItems(
       items as unknown as Record<string, unknown>[],
       (p) =>
         `${String((p.name as string) ?? '')} (${p.id}) — state ${String((p.state as string) ?? '')}`,
     );
-    
+
     const message = summarizeList({
       subject: 'Projects',
       count: items.length,
@@ -120,13 +129,15 @@ export const listProjectsTool = defineTool({
       previewLines: preview,
       nextSteps: meta.nextSteps,
     });
-    
-    const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: message }];
-    
+
+    const parts: Array<{ type: 'text'; text: string }> = [
+      { type: 'text', text: message },
+    ];
+
     if (config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
       parts.push({ type: 'text', text: JSON.stringify(structured) });
     }
-    
+
     return { content: parts, structuredContent: structured };
   },
 });
@@ -145,7 +156,9 @@ const CreateProjectsInputSchema = z.object({
     )
     .min(1)
     .max(50)
-    .describe('Projects to create. Use update_projects to change state after creation.'),
+    .describe(
+      'Projects to create. Use update_projects to change state after creation.',
+    ),
 });
 
 export const createProjectsTool = defineTool({
@@ -153,6 +166,7 @@ export const createProjectsTool = defineTool({
   title: toolsMetadata.create_projects.title,
   description: toolsMetadata.create_projects.description,
   inputSchema: CreateProjectsInputSchema,
+  outputSchema: CreateProjectsOutputSchema,
   annotations: {
     readOnlyHint: false,
     destructiveHint: false,
@@ -161,15 +175,9 @@ export const createProjectsTool = defineTool({
   handler: async (args, context: ToolContext): Promise<ToolResult> => {
     const client = await getLinearClient(context);
     const gate = makeConcurrencyGate(config.CONCURRENCY_LIMIT);
-    
-    const results: {
-      index: number;
-      ok: boolean;
-      id?: string;
-      error?: string;
-      code?: string;
-    }[] = [];
-    
+
+    const results: Array<z.input<typeof BatchResultSchema>> = [];
+
     for (let i = 0; i < args.items.length; i++) {
       const it = args.items[i];
       try {
@@ -181,7 +189,7 @@ export const createProjectsTool = defineTool({
         if (i > 0) {
           await delay(100);
         }
-        
+
         const call = () =>
           client.createProject({
             name: it.name,
@@ -190,12 +198,12 @@ export const createProjectsTool = defineTool({
             targetDate: it.targetDate,
             teamIds: it.teamId ? [it.teamId] : [],
           });
-        
+
         const payload = await withRetry(
           () => (args.items.length > 1 ? gate(call) : call()),
           { maxRetries: 3, baseDelayMs: 500 },
         );
-        
+
         results.push({
           input: { name: it.name, teamId: it.teamId },
           success: payload.success ?? true,
@@ -224,39 +232,49 @@ export const createProjectsTool = defineTool({
         });
       }
     }
-    
+
     const succeeded = results.filter((r) => r.success).length;
     const failed = results.filter((r) => !r.success).length;
-    
+
     const summary = {
       total: args.items.length,
       succeeded,
       failed,
       ok: succeeded,
     };
-    
+
     const meta = {
       nextSteps: ['Use list_projects to verify.', 'Use update_projects to modify.'],
       relatedTools: ['list_projects', 'update_projects', 'list_issues'],
     };
-    
+
     const structured = CreateProjectsOutputSchema.parse({ results, summary, meta });
-    
+
     const okIds = results
       .filter((r) => r.ok)
       .map((r) => r.id ?? `item[${String(r.index)}]`) as string[];
-    
+
     const failures = results
       .filter((r) => !r.ok)
       .map((r) => {
         const err = r.error;
         if (typeof err === 'object' && err !== null) {
           const errObj = err as { message?: string; code?: string };
-          return { index: r.index, id: undefined, error: errObj.message ?? String(err), code: errObj.code };
+          return {
+            index: r.index ?? -1,
+            id: undefined,
+            error: errObj.message ?? String(err),
+            code: errObj.code,
+          };
         }
-        return { index: r.index, id: undefined, error: String(err ?? ''), code: undefined };
+        return {
+          index: r.index ?? -1,
+          id: undefined,
+          error: String(err ?? ''),
+          code: undefined,
+        };
       });
-    
+
     const text = summarizeBatch({
       action: 'Created projects',
       ok: summary.ok,
@@ -265,13 +283,13 @@ export const createProjectsTool = defineTool({
       failures,
       nextSteps: ['Use list_projects to verify; update_projects to modify.'],
     });
-    
+
     const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text }];
-    
+
     if (config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
       parts.push({ type: 'text', text: JSON.stringify(structured) });
     }
-    
+
     return { content: parts, structuredContent: structured };
   },
 });
@@ -286,8 +304,16 @@ const UpdateProjectsInputSchema = z.object({
         description: z.string().optional().describe('New markdown description.'),
         leadId: z.string().optional().describe('New lead user UUID.'),
         targetDate: z.string().optional().describe('New target date (YYYY-MM-DD).'),
-        state: z.string().optional().describe("New state: 'planned', 'started', 'paused', 'completed', 'canceled'."),
-        archived: z.boolean().optional().describe('Set true to archive, false to unarchive.'),
+        state: z
+          .string()
+          .optional()
+          .describe(
+            "New state: 'planned', 'started', 'paused', 'completed', 'canceled'.",
+          ),
+        archived: z
+          .boolean()
+          .optional()
+          .describe('Set true to archive, false to unarchive.'),
       }),
     )
     .min(1)
@@ -300,6 +326,7 @@ export const updateProjectsTool = defineTool({
   title: toolsMetadata.update_projects.title,
   description: toolsMetadata.update_projects.description,
   inputSchema: UpdateProjectsInputSchema,
+  outputSchema: UpdateProjectsOutputSchema,
   annotations: {
     readOnlyHint: false,
     destructiveHint: false,
@@ -308,15 +335,9 @@ export const updateProjectsTool = defineTool({
   handler: async (args, context: ToolContext): Promise<ToolResult> => {
     const client = await getLinearClient(context);
     const gate = makeConcurrencyGate(config.CONCURRENCY_LIMIT);
-    
-    const results: {
-      index: number;
-      ok: boolean;
-      id?: string;
-      error?: string;
-      code?: string;
-    }[] = [];
-    
+
+    const results: Array<z.input<typeof BatchResultSchema>> = [];
+
     for (let i = 0; i < args.items.length; i++) {
       const it = args.items[i];
       try {
@@ -328,7 +349,7 @@ export const updateProjectsTool = defineTool({
         if (i > 0) {
           await delay(100);
         }
-        
+
         const updatePayload: Record<string, unknown> = {};
         if (it.name) updatePayload.name = it.name;
         if (it.description) updatePayload.description = it.description;
@@ -337,7 +358,7 @@ export const updateProjectsTool = defineTool({
         if (it.state) updatePayload.state = it.state;
 
         const call = () => client.updateProject(it.id, updatePayload);
-        
+
         const result = await withRetry(
           () => (args.items.length > 1 ? gate(call) : call()),
           { maxRetries: 3, baseDelayMs: 500 },
@@ -355,7 +376,7 @@ export const updateProjectsTool = defineTool({
             // Ignore archive errors to preserve other updates
           }
         }
-        
+
         results.push({
           input: { id: it.id, name: it.name, state: it.state },
           success: result.success ?? true,
@@ -385,39 +406,49 @@ export const updateProjectsTool = defineTool({
         });
       }
     }
-    
+
     const succeeded = results.filter((r) => r.success).length;
     const failed = results.filter((r) => !r.success).length;
-    
+
     const summary = {
       total: args.items.length,
       succeeded,
       failed,
       ok: succeeded,
     };
-    
+
     const meta = {
       nextSteps: ['Use list_projects to verify changes.'],
       relatedTools: ['list_projects', 'list_issues'],
     };
-    
+
     const structured = UpdateProjectsOutputSchema.parse({ results, summary, meta });
-    
+
     const okIds = results
       .filter((r) => r.ok)
       .map((r) => r.id ?? `item[${String(r.index)}]`) as string[];
-    
+
     const failures = results
       .filter((r) => !r.ok)
       .map((r) => {
         const err = r.error;
         if (typeof err === 'object' && err !== null) {
           const errObj = err as { message?: string; code?: string };
-          return { index: r.index, id: r.id, error: errObj.message ?? String(err), code: errObj.code };
+          return {
+            index: r.index ?? -1,
+            id: r.id,
+            error: errObj.message ?? String(err),
+            code: errObj.code,
+          };
         }
-        return { index: r.index, id: r.id, error: String(err ?? ''), code: undefined };
+        return {
+          index: r.index ?? -1,
+          id: r.id,
+          error: String(err ?? ''),
+          code: undefined,
+        };
       });
-    
+
     const text = summarizeBatch({
       action: 'Updated projects',
       ok: summary.ok,
@@ -426,20 +457,13 @@ export const updateProjectsTool = defineTool({
       failures,
       nextSteps: ['Call list_projects to verify changes.'],
     });
-    
+
     const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text }];
-    
+
     if (config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
       parts.push({ type: 'text', text: JSON.stringify(structured) });
     }
-    
+
     return { content: parts, structuredContent: structured };
   },
 });
-
-
-
-
-
-
-

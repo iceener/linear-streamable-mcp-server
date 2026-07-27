@@ -5,24 +5,28 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "dev": "bun --hot src/index.ts",
-    "dev:worker": "wrangler dev",
+    "dev": "bun --watch src/index.ts",
+    "dev:worker": "wrangler dev --config wrangler.jsonc",
     "start": "bun run src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun",
-    "deploy": "wrangler deploy",
-    "deploy:tail": "wrangler tail",
-    "kv:create": "wrangler kv:namespace create TOKENS",
-    "kv:create:preview": "wrangler kv:namespace create TOKENS --preview",
+    "build:worker": "wrangler deploy --config wrangler.jsonc --dry-run --outdir dist/worker",
+    "deploy": "wrangler deploy --config wrangler.jsonc",
+    "deploy:tail": "wrangler tail --config wrangler.jsonc",
+    "kv:create": "wrangler kv namespace create TOKENS",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
+    "types:worker": "wrangler types --config wrangler.jsonc",
+    "types:worker:check": "wrangler types --config wrangler.jsonc --check",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:integration": "vitest run tests/integration/live-api.test.ts",
-    "test:client": "bun run scripts/test-client.ts"
+    "test:protocol": "vitest run tests/protocol.test.ts",
+    "test:workerd-client": "bun run tests/workerd-client.ts",
+    "test:workerd": "bun run tests/workerd-smoke.ts",
+    "test:integration": "RUN_LINEAR_LIVE_TESTS=true vitest run tests/integration/live-api.test.ts"
   },
   "keywords": [
     "mcp",
@@ -35,28 +39,23 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@biomejs/biome": "^2.1.3",
-    "@hono/node-server": "^1.13.1",
     "@linear/sdk": "^55.2.1",
-    "@modelcontextprotocol/sdk": "^1.24.3",
-    "@types/node": "^24.2.0",
-    "fetch-to-node": "^2.1.0",
-    "hono": "^4.8.12",
-    "itty-router": "^5.0.17",
-    "uuid": "^11.1.0",
-    "zod": "^3.23.8",
-    "zod-to-json-schema": "^3.25.0"
+    "@modelcontextprotocol/server": "2.0.0-beta.5",
+    "hono": "^4.11.7",
+    "zod": "4.4.3"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20241127.0",
-    "@types/uuid": "^10.0.0",
+    "@biomejs/biome": "^2.3.14",
+    "@cloudflare/workers-types": "^5.20260727.1",
+    "@modelcontextprotocol/client": "2.0.0-beta.5",
+    "@types/node": "^24.10.0",
     "bun-types": "latest",
-    "typescript": "^5.9.2",
+    "typescript": "^5.9.3",
     "vitest": "^3.2.4",
-    "wrangler": "^3.94.0"
+    "wrangler": "^4.114.0"
   },
   "engines": {
-    "bun": ">=1.0.0",
+    "bun": ">=1.2.0",
     "node": ">=20.0.0"
   }
 }

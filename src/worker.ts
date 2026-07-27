@@ -1,45 +1,33 @@
-/**
- * Cloudflare Workers entry point.
- *
- * This is a thin wrapper that initializes storage and delegates to the router.
- * All logic is in:
- * - adapters/http-workers/index.ts - Router factory and storage init
- * - adapters/http-workers/mcp.handler.ts - MCP endpoint handler
- * - shared/mcp/dispatcher.ts - JSON-RPC dispatch logic
- */
-
-import {
-  createWorkerRouter,
-  shimProcessEnv,
-  initializeWorkerStorage,
-  type WorkerEnv,
-} from './adapters/http-workers/index.js';
+import { preloadSchemas } from '@modelcontextprotocol/server';
+import { initializeWorkerTokenStore } from './adapters/http-workers/index.js';
+import { buildHttpApp, type HttpRuntime } from './http/app.js';
 import { parseConfig } from './shared/config/env.js';
-import { withCors } from './shared/http/cors.js';
+
+preloadSchemas();
+
+export function createWorkerRuntime(env: Env): HttpRuntime | undefined {
+  const config = parseConfig({ ...env });
+  const tokenStore = initializeWorkerTokenStore(env, config);
+  if (!tokenStore) return undefined;
+  return buildHttpApp(config, {
+    runtimeName: 'cloudflare-workers',
+    tokenStore,
+    mountOAuthRoutes: true,
+  });
+}
+
+let runtime: HttpRuntime | undefined;
 
 export default {
-  async fetch(request: Request, env: WorkerEnv): Promise<Response> {
-    // Shim process.env for shared modules
-    shimProcessEnv(env);
-
-    // Parse config
-    const config = parseConfig(env as Record<string, unknown>);
-
-    // Initialize storage
-    const storage = initializeWorkerStorage(env, config);
-    if (!storage) {
-      return withCors(
-        new Response('Server misconfigured: Storage unavailable', { status: 503 }),
+  fetch(request, env) {
+    runtime ??= createWorkerRuntime(env);
+    if (!runtime) {
+      return Promise.resolve(
+        new Response('Server misconfigured: TOKENS binding unavailable', {
+          status: 503,
+        }),
       );
     }
-
-    // Create and invoke router
-    const router = createWorkerRouter({
-      tokenStore: storage.tokenStore,
-      sessionStore: storage.sessionStore,
-      config,
-    });
-
-    return router.fetch(request);
+    return runtime.fetch(request);
   },
-};
+} satisfies ExportedHandler<Env>;

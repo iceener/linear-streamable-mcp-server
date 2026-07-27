@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 
 // Account/bootstrap
 export const AccountInputSchema = z
@@ -39,7 +39,7 @@ export const DetailLevelSchema = z
 
 export const ListIssuesInputSchema = PaginationInput.extend({
   filter: z
-    .record(z.any())
+    .record(z.string(), z.any())
     .optional()
     .describe(
       "GraphQL-style IssueFilter. If you don't provide a date window, the CLIENT should default to the current week in the viewer's timezone (Mon 00:00 → Sun 23:59:59.999) using updatedAt. Compute the ISO range client-side using viewer.timezone from 'workspace_metadata'.",
@@ -50,7 +50,9 @@ export const ListIssuesInputSchema = PaginationInput.extend({
   orderBy: z
     .enum(['updatedAt', 'createdAt'])
     .optional()
-    .describe("Sort order. Default: 'updatedAt'. Note: priority sorting not supported by Linear API - use filter.priority instead."),
+    .describe(
+      "Sort order. Default: 'updatedAt'. Note: priority sorting not supported by Linear API - use filter.priority instead.",
+    ),
   detail: DetailLevelSchema,
   // Keyword helpers
   q: z
@@ -75,7 +77,7 @@ export const GetIssuesInputSchema = z
 export type GetIssuesInput = z.infer<typeof GetIssuesInputSchema>;
 
 export const ListMyIssuesInputSchema = PaginationInput.extend({
-  filter: z.record(z.any()).optional(),
+  filter: z.record(z.string(), z.any()).optional(),
   includeArchived: z.boolean().optional(),
   orderBy: z.enum(['updatedAt', 'createdAt']).optional(),
   detail: DetailLevelSchema,
@@ -161,7 +163,7 @@ export type UpdateIssuesInput = z.infer<typeof UpdateIssuesInputSchema>;
 
 export const ListProjectsInputSchema = PaginationInput.extend({
   filter: z
-    .record(z.any())
+    .record(z.string(), z.any())
     .optional()
     .describe(
       "GraphQL-style ProjectFilter. Examples: { id: { eq: 'PROJECT_ID' } }, { state: { eq: 'started' } }, { team: { id: { eq: 'TEAM_ID' } } }, { lead: { id: { eq: 'USER_ID' } } }, { targetDate: { lt: 'ISO', gt: 'ISO' } }. For a single project, set filter.id.eq and limit=1.",
@@ -255,28 +257,3 @@ export const AddCommentsInputSchema = z
   })
   .strict();
 export type AddCommentsInput = z.infer<typeof AddCommentsInputSchema>;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -2,20 +2,20 @@
  * List My Issues tool - fetch issues assigned to the current user.
  */
 
-import { z } from 'zod';
-import { toolsMetadata } from '../../../config/metadata.js';
+import { z } from 'zod/v4';
 import { config } from '../../../config/env.js';
+import { toolsMetadata } from '../../../config/metadata.js';
 import { ListIssuesOutputSchema } from '../../../schemas/outputs.js';
 import { getLinearClient } from '../../../services/linear/client.js';
 import { normalizeIssueFilter } from '../../../utils/filters.js';
 import { summarizeList } from '../../../utils/messages.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
 import {
+  type DetailLevel,
   formatIssueDetails,
   formatIssuePreviewLine,
-  previewLinesFromItems,
   type IssueListItem,
-  type DetailLevel,
+  previewLinesFromItems,
 } from './shared/index.js';
 
 const InputSchema = z.object({
@@ -28,24 +28,31 @@ const InputSchema = z.object({
     .describe('Max results. Default: 20.'),
   cursor: z.string().optional().describe('Pagination cursor from previous response.'),
   filter: z
-    .record(z.any())
+    .record(z.string(), z.any())
     .optional()
     .describe(
       'GraphQL-style IssueFilter. Structure: { field: { comparator: value } }. ' +
-        "Comparators: eq, neq, lt, lte, gt, gte, in, nin, containsIgnoreCase. " +
+        'Comparators: eq, neq, lt, lte, gt, gte, in, nin, containsIgnoreCase. ' +
         "Examples: { state: { type: { eq: 'started' } } } for in-progress, " +
         "{ state: { type: { neq: 'completed' } } } for open issues, " +
         "{ project: { id: { eq: 'PROJECT_UUID' } } }.",
     ),
-  includeArchived: z.boolean().optional().describe('Include archived issues. Default: false.'),
+  includeArchived: z
+    .boolean()
+    .optional()
+    .describe('Include archived issues. Default: false.'),
   orderBy: z
     .enum(['updatedAt', 'createdAt'])
     .optional()
-    .describe("Sort order. Default: 'updatedAt'. Use filter.priority for priority-based filtering."),
+    .describe(
+      "Sort order. Default: 'updatedAt'. Use filter.priority for priority-based filtering.",
+    ),
   detail: z
     .enum(['minimal', 'standard', 'full'])
     .optional()
-    .describe("Detail level: 'minimal' (id, title, state), 'standard' (+ priority, assignee, project, due), 'full' (+ labels, description). Default: 'standard'."),
+    .describe(
+      "Detail level: 'minimal' (id, title, state), 'standard' (+ priority, assignee, project, due), 'full' (+ labels, description). Default: 'standard'.",
+    ),
   q: z
     .string()
     .optional()
@@ -74,6 +81,7 @@ export const listMyIssuesTool = defineTool({
   title: toolsMetadata.list_my_issues.title,
   description: toolsMetadata.list_my_issues.description,
   inputSchema: InputSchema,
+  outputSchema: ListIssuesOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -94,7 +102,11 @@ export const listMyIssuesTool = defineTool({
     ];
     const mode = args.matchMode ?? 'all';
     const keywordFilter = keywordTokens.length
-      ? { [mode === 'all' ? 'and' : 'or']: keywordTokens.map((t) => ({ title: { containsIgnoreCase: t } })) }
+      ? {
+          [mode === 'all' ? 'and' : 'or']: keywordTokens.map((t) => ({
+            title: { containsIgnoreCase: t },
+          })),
+        }
       : undefined;
     const baseFilter =
       normalizeIssueFilter(args.filter as Record<string, unknown> | undefined) ?? {};
@@ -165,7 +177,8 @@ export const listMyIssuesTool = defineTool({
     ).data?.viewer?.assignedIssues ?? { nodes: [], pageInfo: {} };
 
     const items: IssueListItem[] = (conn.nodes ?? []).map((i) => {
-      const state = (i.state as { id?: string; name?: string } | undefined) ?? undefined;
+      const state =
+        (i.state as { id?: string; name?: string } | undefined) ?? undefined;
       const project =
         (i.project as { id?: string; name?: string } | undefined) ?? undefined;
       const assignee =
@@ -202,7 +215,7 @@ export const listMyIssuesTool = defineTool({
 
     const pageInfo = conn.pageInfo ?? {};
     const hasMore = pageInfo.hasNextPage ?? false;
-    const nextCursor = hasMore ? pageInfo.endCursor ?? undefined : undefined;
+    const nextCursor = hasMore ? (pageInfo.endCursor ?? undefined) : undefined;
 
     // Build query echo for LLM context
     const query = {
@@ -229,7 +242,9 @@ export const listMyIssuesTool = defineTool({
       metaNextSteps.push('Use get_issues with specific IDs for detailed info.');
       metaNextSteps.push('Use update_issues to change state, assignee, or labels.');
     } else {
-      metaNextSteps.push("Refine filters: try state.type 'started' or remove keyword filter.");
+      metaNextSteps.push(
+        "Refine filters: try state.type 'started' or remove keyword filter.",
+      );
       metaNextSteps.push('Use list_issues without assignedToMe to see all issues.');
     }
     if (hasMore) {
@@ -238,7 +253,10 @@ export const listMyIssuesTool = defineTool({
 
     const meta = {
       nextSteps: metaNextSteps,
-      hints: items.length === 0 ? ['No issues assigned to you match the current filters.'] : undefined,
+      hints:
+        items.length === 0
+          ? ['No issues assigned to you match the current filters.']
+          : undefined,
       relatedTools: ['get_issues', 'update_issues', 'add_comments', 'list_issues'],
     };
 
@@ -255,7 +273,9 @@ export const listMyIssuesTool = defineTool({
 
     // Use shared formatting utilities with detail level
     const detail: DetailLevel = args.detail ?? 'standard';
-    const preview = previewLinesFromItems(items, (i) => formatIssuePreviewLine(i, detail));
+    const preview = previewLinesFromItems(items, (i) =>
+      formatIssuePreviewLine(i, detail),
+    );
 
     const message = summarizeList({
       subject: 'My issues',
@@ -267,24 +287,15 @@ export const listMyIssuesTool = defineTool({
     });
 
     // Use shared details formatting with detail level
-    const details = items
-      .map((i) => formatIssueDetails(i, { detail }))
-      .join('\n');
+    const details = items.map((i) => formatIssueDetails(i, { detail })).join('\n');
 
     const full = details ? `${message}\n\n${details}` : message;
     const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: full }];
 
-    if (config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
+    if (context.includeJsonInContent ?? config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
       parts.push({ type: 'text', text: JSON.stringify(structured) });
     }
 
     return { content: parts, structuredContent: structured };
   },
 });
-
-
-
-
-
-
-

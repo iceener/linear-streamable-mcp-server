@@ -98,13 +98,15 @@
     {
       "name": "multiple_fields",
       "input": {
-        "items": [{
-          "id": "issue-001",
-          "title": "Updated",
-          "stateId": "state-done",
-          "priority": 1,
-          "addLabelIds": ["label-feature"]
-        }]
+        "items": [
+          {
+            "id": "issue-001",
+            "title": "Updated",
+            "stateId": "state-done",
+            "priority": 1,
+            "addLabelIds": ["label-feature"]
+          }
+        ]
       },
       "description": "Update multiple fields at once"
     },
@@ -142,4 +144,3 @@
     }
   ]
 }
-

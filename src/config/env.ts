@@ -1,10 +1,15 @@
-// Re-export shared config for compatibility
-import { resolveConfig } from '../shared/config/env.js';
+import { parseConfig } from '../shared/config/env.js';
 
 export {
   parseConfig,
-  resolveConfig,
   type UnifiedConfig,
 } from '../shared/config/env.js';
 
-export const config = resolveConfig();
+/**
+ * Compatibility defaults for direct tool-level tests. Deployed runtimes inject
+ * their parsed configuration through ToolContext and never mutate this object.
+ */
+export const config = parseConfig({
+  NODE_ENV: 'test',
+  AUTH_ENABLED: 'false',
+});

@@ -3,15 +3,15 @@
  * Verifies: listing teams, listing users, pagination, output shapes.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { listTeamsTool } from '../../src/shared/tools/linear/list-teams.js';
 import { listUsersTool } from '../../src/shared/tools/linear/list-users.js';
+import type { ToolContext } from '../../src/shared/tools/types.js';
 import {
   createMockLinearClient,
-  resetMockCalls,
   type MockLinearClient,
+  resetMockCalls,
 } from '../mocks/linear-client.js';
-import type { ToolContext } from '../../src/shared/tools/types.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
@@ -21,7 +21,7 @@ let mockClient: MockLinearClient;
 
 const baseContext: ToolContext = {
   sessionId: 'test-session',
-  providerToken: 'test-token',
+  linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
 
@@ -72,7 +72,10 @@ describe('list_teams tool', () => {
     });
 
     it('supports pagination with cursor', async () => {
-      const result = await listTeamsTool.handler({ cursor: 'test-cursor' }, baseContext);
+      const result = await listTeamsTool.handler(
+        { cursor: 'test-cursor' },
+        baseContext,
+      );
 
       expect(result.isError).toBeFalsy();
 
@@ -123,7 +126,7 @@ describe('list_teams tool', () => {
       const items = structured.items as Array<Record<string, unknown>>;
 
       expect(items.length).toBeGreaterThan(0);
-      
+
       // Teams should have identifiers LLM can use in list_issues
       for (const team of items) {
         expect(team.id).toBeDefined();
@@ -180,7 +183,10 @@ describe('list_users tool', () => {
     });
 
     it('supports pagination with cursor', async () => {
-      const result = await listUsersTool.handler({ cursor: 'test-cursor' }, baseContext);
+      const result = await listUsersTool.handler(
+        { cursor: 'test-cursor' },
+        baseContext,
+      );
 
       expect(result.isError).toBeFalsy();
 
@@ -312,4 +318,3 @@ describe('teams and users workflow integration', () => {
     }
   });
 });
-

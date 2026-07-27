@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared Meta Schema - Guidance for LLM
@@ -77,7 +77,7 @@ export const IssueItemSchema = z
 
 export const ListIssuesQuerySchema = z
   .object({
-    filter: z.record(z.unknown()).optional(),
+    filter: z.record(z.string(), z.unknown()).optional(),
     teamId: z.string().optional(),
     projectId: z.string().optional(),
     assignedToMe: z.boolean().optional(),
@@ -147,17 +147,19 @@ export type GetIssuesOutput = z.infer<typeof GetIssuesOutputSchema>;
 export const BatchResultSchema = z
   .object({
     // Echo input for context
-    input: z.record(z.unknown()).optional(),
+    input: z.record(z.string(), z.unknown()).optional(),
+    validated: z.boolean().optional(),
     // Result
-    success: z.boolean(),
+    success: z.boolean().optional(),
     id: z.string().optional(),
     identifier: z.string().optional(),
     url: z.string().optional(),
-    // Error details
-    error: StructuredErrorSchema.optional(),
+    // Error details (legacy callers may still return a message string)
+    error: z.union([StructuredErrorSchema, z.string()]).optional(),
     // Legacy fields
     index: z.number().optional(),
     ok: z.boolean().optional(),
+    code: z.string().optional(),
   })
   .strict();
 
@@ -176,6 +178,7 @@ export const CreateIssuesOutputSchema = z
     results: z.array(BatchResultSchema),
     summary: BatchSummarySchema,
     meta: MetaSchema.optional(),
+    dry_run: z.boolean().optional(),
   })
   .strict();
 export type CreateIssuesOutput = z.infer<typeof CreateIssuesOutputSchema>;
@@ -202,7 +205,7 @@ export const ProjectItemSchema = z
 
 export const ListProjectsQuerySchema = z
   .object({
-    filter: z.record(z.unknown()).optional(),
+    filter: z.record(z.string(), z.unknown()).optional(),
     includeArchived: z.boolean().optional(),
     limit: z.number(),
   })
@@ -400,11 +403,11 @@ export const QuickLookupSchema = z
     viewerName: z.string().optional(),
     viewerEmail: z.string().optional(),
     teamIds: z.array(z.string()).optional(),
-    teamByKey: z.record(z.string()).optional(),
-    teamByName: z.record(z.string()).optional(),
-    stateIdByName: z.record(z.string()).optional(),
-    labelIdByName: z.record(z.string()).optional(),
-    projectIdByName: z.record(z.string()).optional(),
+    teamByKey: z.record(z.string(), z.string()).optional(),
+    teamByName: z.record(z.string(), z.string()).optional(),
+    stateIdByName: z.record(z.string(), z.string()).optional(),
+    labelIdByName: z.record(z.string(), z.string()).optional(),
+    projectIdByName: z.record(z.string(), z.string()).optional(),
   })
   .strict();
 
@@ -443,6 +446,7 @@ export const AccountOutputSchema = z
       .optional(),
     workflowStatesByTeam: z
       .record(
+        z.string(),
         z.array(
           z.object({ id: z.string(), name: z.string(), type: z.string() }).strict(),
         ),
@@ -450,6 +454,7 @@ export const AccountOutputSchema = z
       .optional(),
     labelsByTeam: z
       .record(
+        z.string(),
         z.array(
           z
             .object({
@@ -490,3 +495,19 @@ export const AccountOutputSchema = z
   })
   .strict();
 export type AccountOutput = z.infer<typeof AccountOutputSchema>;
+
+export const ShowIssuesUIOutputSchema = z
+  .object({
+    action: z.literal('show_issues_ui'),
+    filters: z
+      .object({
+        teamId: z.string().optional(),
+        stateType: z
+          .enum(['started', 'unstarted', 'backlog', 'completed', 'cancelled'])
+          .optional(),
+        assignedToMe: z.boolean().optional(),
+      })
+      .strict(),
+    message: z.string(),
+  })
+  .strict();

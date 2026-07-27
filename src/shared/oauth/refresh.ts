@@ -133,7 +133,9 @@ export async function refreshProviderToken(
         access_token: accessToken,
         refresh_token: data.refresh_token ?? refreshToken, // Some providers don't rotate
         expires_at: Date.now() + Number(data.expires_in ?? 3600) * 1000,
-        scopes: String(data.scope || '').split(/\s+/).filter(Boolean),
+        scopes: String(data.scope || '')
+          .split(/\s+/)
+          .filter(Boolean),
       },
     };
   } catch (error) {
@@ -256,7 +258,10 @@ export async function ensureFreshToken(
   }
 
   // Attempt refresh
-  const result = await refreshProviderToken(record.provider.refresh_token, providerConfig);
+  const result = await refreshProviderToken(
+    record.provider.refresh_token,
+    providerConfig,
+  );
 
   if (!result.success || !result.tokens) {
     logger.error('oauth_refresh', {
@@ -268,7 +273,8 @@ export async function ensureFreshToken(
 
   // Determine if RS access token should rotate
   // Only rotate when provider refresh_token changed (security trade-off for KV quota)
-  const providerRefreshRotated = result.tokens.refresh_token !== record.provider.refresh_token;
+  const providerRefreshRotated =
+    result.tokens.refresh_token !== record.provider.refresh_token;
   const newRsAccess = providerRefreshRotated ? undefined : record.rs_access_token;
 
   // Update token store with new tokens
@@ -297,5 +303,3 @@ export async function ensureFreshToken(
     return { accessToken: result.tokens.access_token, wasRefreshed: true };
   }
 }
-
-

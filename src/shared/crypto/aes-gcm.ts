@@ -8,6 +8,12 @@ const KEY_LENGTH = 256;
 const IV_LENGTH = 12; // 96 bits recommended for GCM
 const TAG_LENGTH = 128; // bits
 
+function ownedBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
 /**
  * Derive a CryptoKey from a base64url-encoded secret.
  */
@@ -22,7 +28,7 @@ async function deriveKey(secret: string): Promise<CryptoKey> {
 
   return crypto.subtle.importKey(
     'raw',
-    keyBytes,
+    ownedBuffer(keyBytes),
     { name: ALGORITHM, length: KEY_LENGTH },
     false, // not extractable
     ['encrypt', 'decrypt'],
@@ -50,7 +56,7 @@ export async function encrypt(plaintext: string, secret: string): Promise<string
   const ciphertext = await crypto.subtle.encrypt(
     { name: ALGORITHM, iv, tagLength: TAG_LENGTH },
     key,
-    plaintextBytes,
+    ownedBuffer(plaintextBytes),
   );
 
   // Combine IV + ciphertext (GCM tag is appended by Web Crypto)
@@ -87,7 +93,7 @@ export async function decrypt(ciphertext: string, secret: string): Promise<strin
   const plaintextBytes = await crypto.subtle.decrypt(
     { name: ALGORITHM, iv, tagLength: TAG_LENGTH },
     key,
-    encrypted,
+    ownedBuffer(encrypted),
   );
 
   // Decode bytes to string
@@ -149,5 +155,3 @@ export function createEncryptor(secret: string): {
     decrypt: (ciphertext: string) => decrypt(ciphertext, secret),
   };
 }
-
-

@@ -3,12 +3,16 @@
  * Verifies: input validation, output shape, viewer/teams/states/labels/projects fetching.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { workspaceMetadataTool } from '../../src/shared/tools/linear/workspace-metadata.js';
-import { createMockLinearClient, resetMockCalls, type MockLinearClient } from '../mocks/linear-client.js';
 import type { ToolContext } from '../../src/shared/tools/types.js';
 import workspaceMetadataFixtures from '../fixtures/tool-inputs/workspace-metadata.json';
+import {
+  createMockLinearClient,
+  type MockLinearClient,
+  resetMockCalls,
+} from '../mocks/linear-client.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
@@ -18,7 +22,7 @@ let mockClient: MockLinearClient;
 
 const baseContext: ToolContext = {
   sessionId: 'test-session',
-  providerToken: 'test-token',
+  linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
 
@@ -74,7 +78,7 @@ describe('workspace_metadata input validation', () => {
         const result = workspaceMetadataTool.inputSchema.safeParse(fixture.input);
         expect(result.success).toBe(false);
         if (!result.success) {
-          const errorMessage = result.error.errors.map((e) => e.message).join(', ');
+          const errorMessage = result.error.issues.map((e) => e.message).join(', ');
           expect(errorMessage).toContain(fixture.expectedError);
         }
       });
@@ -88,7 +92,10 @@ describe('workspace_metadata input validation', () => {
 
 describe('workspace_metadata handler', () => {
   it('returns viewer profile when include contains "profile"', async () => {
-    const result = await workspaceMetadataTool.handler({ include: ['profile'] }, baseContext);
+    const result = await workspaceMetadataTool.handler(
+      { include: ['profile'] },
+      baseContext,
+    );
 
     expect(result.isError).toBeFalsy();
     expect(result.structuredContent).toBeDefined();
@@ -104,7 +111,10 @@ describe('workspace_metadata handler', () => {
   });
 
   it('returns teams when include contains "teams"', async () => {
-    const result = await workspaceMetadataTool.handler({ include: ['teams'] }, baseContext);
+    const result = await workspaceMetadataTool.handler(
+      { include: ['teams'] },
+      baseContext,
+    );
 
     expect(result.isError).toBeFalsy();
     const structured = result.structuredContent as Record<string, unknown>;
@@ -245,7 +255,10 @@ describe('workspace_metadata handler', () => {
   });
 
   it('returns text content with viewer info', async () => {
-    const result = await workspaceMetadataTool.handler({ include: ['profile'] }, baseContext);
+    const result = await workspaceMetadataTool.handler(
+      { include: ['profile'] },
+      baseContext,
+    );
 
     expect(result.content).toBeDefined();
     expect(result.content.length).toBeGreaterThan(0);
@@ -295,4 +308,3 @@ describe('workspace_metadata output schema compliance', () => {
     }
   });
 });
-

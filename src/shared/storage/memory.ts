@@ -1,23 +1,13 @@
 // In-memory storage implementation with TTL, size limits, and cleanup
 // Provider-agnostic version from Spotify MCP
 
-import type {
-  ProviderTokens,
-  RsRecord,
-  SessionRecord,
-  SessionStore,
-  TokenStore,
-  Transaction,
-} from './interface.js';
+import type { ProviderTokens, RsRecord, TokenStore, Transaction } from './interface.js';
 
 /** Default TTL for transactions (10 minutes per OAuth spec) */
 const DEFAULT_TXN_TTL_MS = 10 * 60 * 1000;
 
 /** Default TTL for authorization codes (10 minutes per OAuth spec) */
 const DEFAULT_CODE_TTL_MS = 10 * 60 * 1000;
-
-/** Default TTL for sessions (24 hours) */
-const DEFAULT_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** Default TTL for RS tokens (7 days) */
 const DEFAULT_RS_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -27,9 +17,6 @@ const MAX_RS_RECORDS = 10_000;
 
 /** Maximum number of transactions */
 const MAX_TRANSACTIONS = 1_000;
-
-/** Maximum number of sessions */
-const MAX_SESSIONS = 10_000;
 
 /** Cleanup interval (1 minute) */
 const CLEANUP_INTERVAL_MS = 60_000;
@@ -67,9 +54,7 @@ function evictOldest<K, V extends { created_at?: number; createdAt?: number }>(
 /**
  * Remove expired entries from a timed map.
  */
-function cleanupExpired<K, V extends { expiresAt: number }>(
-  map: Map<K, V>,
-): number {
+function cleanupExpired<K, V extends { expiresAt: number }>(map: Map<K, V>): number {
   const now = Date.now();
   let removed = 0;
 
@@ -106,7 +91,10 @@ export class MemoryTokenStore implements TokenStore {
     }, CLEANUP_INTERVAL_MS);
 
     // Don't prevent process exit
-    if (typeof this.cleanupIntervalId === 'object' && 'unref' in this.cleanupIntervalId) {
+    if (
+      typeof this.cleanupIntervalId === 'object' &&
+      'unref' in this.cleanupIntervalId
+    ) {
       this.cleanupIntervalId.unref();
     }
   }
@@ -277,11 +265,7 @@ export class MemoryTokenStore implements TokenStore {
     this.transactions.delete(txnId);
   }
 
-  async saveCode(
-    code: string,
-    txnId: string,
-    ttlSeconds?: number,
-  ): Promise<void> {
+  async saveCode(code: string, txnId: string, ttlSeconds?: number): Promise<void> {
     const ttlMs = ttlSeconds ? ttlSeconds * 1000 : DEFAULT_CODE_TTL_MS;
     const now = Date.now();
 
@@ -322,121 +306,5 @@ export class MemoryTokenStore implements TokenStore {
       transactions: this.transactions.size,
       codes: this.codes.size,
     };
-  }
-}
-
-export class MemorySessionStore implements SessionStore {
-  protected sessions = new Map<string, SessionRecord & { expiresAt: number }>();
-  private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
-
-  constructor() {
-    this.startCleanup();
-  }
-
-  /**
-   * Start periodic cleanup of expired sessions.
-   */
-  startCleanup(): void {
-    if (this.cleanupIntervalId) return;
-
-    this.cleanupIntervalId = setInterval(() => {
-      this.cleanup();
-    }, CLEANUP_INTERVAL_MS);
-
-    // Don't prevent process exit
-    if (typeof this.cleanupIntervalId === 'object' && 'unref' in this.cleanupIntervalId) {
-      this.cleanupIntervalId.unref();
-    }
-  }
-
-  /**
-   * Stop periodic cleanup.
-   */
-  stopCleanup(): void {
-    if (this.cleanupIntervalId) {
-      clearInterval(this.cleanupIntervalId);
-      this.cleanupIntervalId = null;
-    }
-  }
-
-  /**
-   * Remove expired sessions.
-   */
-  cleanup(): number {
-    const now = Date.now();
-    let removed = 0;
-
-    for (const [sessionId, session] of this.sessions) {
-      if (now >= session.expiresAt) {
-        this.sessions.delete(sessionId);
-        removed++;
-      }
-    }
-
-    return removed;
-  }
-
-  async ensure(
-    sessionId: string,
-    ttlMs: number = DEFAULT_SESSION_TTL_MS,
-  ): Promise<void> {
-    if (this.sessions.has(sessionId)) {
-      // Extend TTL on access
-      const existing = this.sessions.get(sessionId)!;
-      existing.expiresAt = Date.now() + ttlMs;
-      return;
-    }
-
-    // Evict oldest if at capacity
-    if (this.sessions.size >= MAX_SESSIONS) {
-      const oldest = [...this.sessions.entries()].sort(
-        (a, b) => a[1].created_at - b[1].created_at,
-      )[0];
-      if (oldest) {
-        this.sessions.delete(oldest[0]);
-      }
-    }
-
-    const now = Date.now();
-    this.sessions.set(sessionId, {
-      created_at: now,
-      expiresAt: now + ttlMs,
-    });
-  }
-
-  async get(sessionId: string): Promise<SessionRecord | null> {
-    const session = this.sessions.get(sessionId);
-    if (!session) return null;
-
-    // Check expiration
-    if (Date.now() >= session.expiresAt) {
-      this.sessions.delete(sessionId);
-      return null;
-    }
-
-    return session;
-  }
-
-  async put(
-    sessionId: string,
-    value: SessionRecord,
-    ttlMs: number = DEFAULT_SESSION_TTL_MS,
-  ): Promise<void> {
-    const now = Date.now();
-    this.sessions.set(sessionId, {
-      ...value,
-      expiresAt: now + ttlMs,
-    });
-  }
-
-  async delete(sessionId: string): Promise<void> {
-    this.sessions.delete(sessionId);
-  }
-
-  /**
-   * Get current session count.
-   */
-  getSessionCount(): number {
-    return this.sessions.size;
   }
 }

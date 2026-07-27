@@ -24,13 +24,6 @@ export type Transaction = {
   provider?: ProviderTokens;
 };
 
-export type SessionRecord = {
-  rs_access_token?: string;
-  rs_refresh_token?: string;
-  provider?: ProviderTokens | null;
-  created_at: number;
-};
-
 /**
  * Token storage interface - all operations are async to support both
  * sync (Node Map + File) and async (Cloudflare KV) backends
@@ -66,17 +59,4 @@ export interface TokenStore {
   getTxnIdByCode(code: string): Promise<string | null>;
 
   deleteCode(code: string): Promise<void>;
-}
-
-/**
- * Session storage interface
- */
-export interface SessionStore {
-  ensure(sessionId: string): Promise<void>;
-
-  get(sessionId: string): Promise<SessionRecord | null>;
-
-  put(sessionId: string, value: SessionRecord): Promise<void>;
-
-  delete(sessionId: string): Promise<void>;
 }

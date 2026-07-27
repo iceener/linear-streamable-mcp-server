@@ -2,12 +2,12 @@
  * List Teams tool.
  */
 
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { toolsMetadata } from '../../../config/metadata.js';
 import { ListTeamsOutputSchema } from '../../../schemas/outputs.js';
 import { getLinearClient } from '../../../services/linear/client.js';
 import { mapTeamNodeToListItem } from '../../../utils/mappers.js';
-import { summarizeList, previewLinesFromItems } from '../../../utils/messages.js';
+import { previewLinesFromItems, summarizeList } from '../../../utils/messages.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
 
 const InputSchema = z.object({
@@ -20,6 +20,7 @@ export const listTeamsTool = defineTool({
   title: toolsMetadata.list_teams.title,
   description: toolsMetadata.list_teams.description,
   inputSchema: InputSchema,
+  outputSchema: ListTeamsOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -34,7 +35,9 @@ export const listTeamsTool = defineTool({
       queryArgs.after = args.cursor;
     }
 
-    const connection = await client.teams(queryArgs as Parameters<typeof client.teams>[0]);
+    const connection = await client.teams(
+      queryArgs as Parameters<typeof client.teams>[0],
+    );
     const items = connection.nodes.map(mapTeamNodeToListItem);
     const pageInfo = connection.pageInfo;
 
@@ -93,10 +96,3 @@ export const listTeamsTool = defineTool({
     };
   },
 });
-
-
-
-
-
-
-

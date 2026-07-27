@@ -103,9 +103,10 @@ ${header}
   }
 
   // Standard: + priority, project, assignee, dueDate
-  const pri = issue.priority !== undefined && issue.priority > 0
-    ? `\n  priority: ${formatPriority(issue.priority)} (${issue.priority})`
-    : '';
+  const pri =
+    issue.priority !== undefined && issue.priority > 0
+      ? `\n  priority: ${formatPriority(issue.priority)} (${issue.priority})`
+      : '';
 
   const proj = issue.projectName
     ? `\n  project: ${issue.projectName} (${issue.projectId ?? ''})`
@@ -164,28 +165,3 @@ export function previewLinesFromItems<T extends Record<string, unknown>>(
 ): string[] {
   return items.map(formatter);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

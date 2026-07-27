@@ -2,14 +2,17 @@
  * Get Issues tool - fetch multiple issues by ID in batch.
  */
 
-import { z } from 'zod';
-import { toolsMetadata } from '../../../config/metadata.js';
+import { z } from 'zod/v4';
 import { config } from '../../../config/env.js';
-import { GetIssueOutputSchema, GetIssuesOutputSchema } from '../../../schemas/outputs.js';
+import { toolsMetadata } from '../../../config/metadata.js';
+import {
+  GetIssueOutputSchema,
+  GetIssuesOutputSchema,
+} from '../../../schemas/outputs.js';
 import { getLinearClient } from '../../../services/linear/client.js';
-import { summarizeBatch } from '../../../utils/messages.js';
 import { makeConcurrencyGate } from '../../../utils/limits.js';
 import { logger } from '../../../utils/logger.js';
+import { summarizeBatch } from '../../../utils/messages.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
 
 const InputSchema = z.object({
@@ -25,6 +28,7 @@ export const getIssuesTool = defineTool({
   title: toolsMetadata.get_issues.title,
   description: toolsMetadata.get_issues.description,
   inputSchema: InputSchema,
+  outputSchema: GetIssuesOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -146,7 +150,11 @@ export const getIssuesTool = defineTool({
       okIdentifiers: okIds as string[],
       failures: results
         .filter((r) => !r.success)
-        .map((r, idx) => ({ index: idx, id: r.requestedId, error: r.error?.message ?? '' })),
+        .map((r, idx) => ({
+          index: idx,
+          id: r.requestedId,
+          error: r.error?.message ?? '',
+        })),
     });
 
     const previewLines = results
@@ -164,7 +172,7 @@ export const getIssuesTool = defineTool({
         const assNm = it.assignee?.name as string | undefined;
         const prefix = it.url
           ? `[${it.identifier ?? it.id}](${it.url})`
-          : it.identifier ?? it.id;
+          : (it.identifier ?? it.id);
         return `${prefix} '${it.title}'${
           stateNm ? ` — state ${stateNm}` : ''
         }${assNm ? `, assignee ${assNm}` : ''}`;
@@ -175,24 +183,19 @@ export const getIssuesTool = defineTool({
     if (previewLines.length > 0) {
       textParts.push(`Preview:\n${previewLines.map((l) => `- ${l}`).join('\n')}`);
     }
-    textParts.push('Tip: Use update_issues to modify, or list_issues to discover more.');
+    textParts.push(
+      'Tip: Use update_issues to modify, or list_issues to discover more.',
+    );
     const fullMessage = textParts.join('\n\n');
 
     const parts: Array<{ type: 'text'; text: string }> = [
       { type: 'text', text: fullMessage },
     ];
 
-    if (config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
+    if (context.includeJsonInContent ?? config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
       parts.push({ type: 'text', text: JSON.stringify(structuredBatch) });
     }
 
     return { content: parts, structuredContent: structuredBatch };
   },
 });
-
-
-
-
-
-
-

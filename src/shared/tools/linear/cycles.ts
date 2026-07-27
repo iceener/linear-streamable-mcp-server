@@ -3,12 +3,12 @@
  */
 
 import { LinearDocument } from '@linear/sdk';
-import { z } from 'zod';
-import { toolsMetadata } from '../../../config/metadata.js';
+import { z } from 'zod/v4';
 import { config } from '../../../config/env.js';
+import { toolsMetadata } from '../../../config/metadata.js';
 import { ListCyclesOutputSchema } from '../../../schemas/outputs.js';
 import { getLinearClient } from '../../../services/linear/client.js';
-import { summarizeList, previewLinesFromItems } from '../../../utils/messages.js';
+import { previewLinesFromItems, summarizeList } from '../../../utils/messages.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
 
 const InputSchema = z.object({
@@ -24,6 +24,7 @@ export const listCyclesTool = defineTool({
   title: toolsMetadata.list_cycles.title,
   description: toolsMetadata.list_cycles.description,
   inputSchema: InputSchema,
+  outputSchema: ListCyclesOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -32,10 +33,11 @@ export const listCyclesTool = defineTool({
   handler: async (args, context: ToolContext): Promise<ToolResult> => {
     const client = await getLinearClient(context);
     const team = await client.team(args.teamId);
-    
+
     const cyclesEnabled =
-      ((team as unknown as { cyclesEnabled?: boolean } | null)?.cyclesEnabled ?? false) === true;
-    
+      ((team as unknown as { cyclesEnabled?: boolean } | null)?.cyclesEnabled ??
+        false) === true;
+
     if (!cyclesEnabled) {
       const msg =
         `Cycles are disabled for team ${args.teamId}.\n\n` +
@@ -56,7 +58,7 @@ export const listCyclesTool = defineTool({
         },
       };
     }
-    
+
     const first = args.limit ?? 20;
     const after = args.cursor;
     const orderBy =
@@ -65,14 +67,14 @@ export const listCyclesTool = defineTool({
         : args.orderBy === 'createdAt'
           ? LinearDocument.PaginationOrderBy.CreatedAt
           : undefined;
-    
+
     const conn = await team.cycles({
       first,
       after,
       includeArchived: args.includeArchived,
       orderBy,
     });
-    
+
     const items = conn.nodes.map((c) => ({
       id: c.id,
       name: (c as unknown as { name?: string })?.name ?? undefined,
@@ -83,10 +85,10 @@ export const listCyclesTool = defineTool({
       teamId: args.teamId,
       status: (c as unknown as { status?: string })?.status ?? undefined,
     }));
-    
+
     const pageInfo = conn.pageInfo;
     const hasMore = pageInfo?.hasNextPage ?? false;
-    const nextCursor = hasMore ? pageInfo?.endCursor ?? undefined : undefined;
+    const nextCursor = hasMore ? (pageInfo?.endCursor ?? undefined) : undefined;
 
     // Build query echo
     const query = {
@@ -124,7 +126,7 @@ export const listCyclesTool = defineTool({
       nextCursor,
       limit: first,
     });
-    
+
     const preview = previewLinesFromItems(
       items as unknown as Record<string, unknown>[],
       (c) =>
@@ -136,7 +138,7 @@ export const listCyclesTool = defineTool({
             : ''
         }`.trim(),
     );
-    
+
     const message = summarizeList({
       subject: 'Cycles',
       count: items.length,
@@ -145,38 +147,15 @@ export const listCyclesTool = defineTool({
       previewLines: preview,
       nextSteps: meta.nextSteps,
     });
-    
-    const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: message }];
-    
-    if (config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
+
+    const parts: Array<{ type: 'text'; text: string }> = [
+      { type: 'text', text: message },
+    ];
+
+    if (context.includeJsonInContent ?? config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
       parts.push({ type: 'text', text: JSON.stringify(structured) });
     }
-    
+
     return { content: parts, structuredContent: structured };
   },
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

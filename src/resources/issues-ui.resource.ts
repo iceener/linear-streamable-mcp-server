@@ -5,7 +5,7 @@
  * Uses JSON-RPC over postMessage (SEP-1865) to communicate with the host.
  */
 
-import type { ReadResourceResult } from '@modelcontextprotocol/sdk/types.js';
+import type { ReadResourceResult } from '@modelcontextprotocol/server';
 
 export const issuesUIMetadata = {
   name: 'Linear Issues',

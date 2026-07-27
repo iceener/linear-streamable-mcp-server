@@ -1,27 +1,27 @@
 // Re-export commonly used types from schemas
-export type {
-  AccountOutput,
-  ListIssuesOutput,
-  ListProjectsOutput,
-  ListTeamsOutput,
-  ListUsersOutput,
-  ListCyclesOutput,
-  ListCommentsOutput,
-  GetIssueOutput,
-  GetIssuesOutput,
-  CreateIssuesOutput,
-  UpdateIssuesOutput,
-} from '../schemas/outputs.js';
 
 export type {
   AccountInput,
+  CreateIssuesInput,
   ListIssuesInput,
   ListProjectsInput,
   ListTeamsInput,
   ListUsersInput,
-  CreateIssuesInput,
   UpdateIssuesInput,
 } from '../schemas/inputs.js';
+export type {
+  AccountOutput,
+  CreateIssuesOutput,
+  GetIssueOutput,
+  GetIssuesOutput,
+  ListCommentsOutput,
+  ListCyclesOutput,
+  ListIssuesOutput,
+  ListProjectsOutput,
+  ListTeamsOutput,
+  ListUsersOutput,
+  UpdateIssuesOutput,
+} from '../schemas/outputs.js';
 
 // Service layer types
 export interface ApiError extends Error {

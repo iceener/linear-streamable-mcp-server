@@ -2,19 +2,24 @@
  * Comments tools - list and add comments on issues.
  */
 
-import { z } from 'zod';
-import { toolsMetadata } from '../../../config/metadata.js';
+import { z } from 'zod/v4';
 import { config } from '../../../config/env.js';
+import { toolsMetadata } from '../../../config/metadata.js';
 import {
   AddCommentsOutputSchema,
+  type BatchResultSchema,
   ListCommentsOutputSchema,
   UpdateCommentsOutputSchema,
 } from '../../../schemas/outputs.js';
 import { getLinearClient } from '../../../services/linear/client.js';
-import { makeConcurrencyGate, withRetry, delay } from '../../../utils/limits.js';
+import { delay, makeConcurrencyGate, withRetry } from '../../../utils/limits.js';
 import { logger } from '../../../utils/logger.js';
 import { mapCommentNodeToListItem } from '../../../utils/mappers.js';
-import { summarizeBatch, summarizeList, previewLinesFromItems } from '../../../utils/messages.js';
+import {
+  previewLinesFromItems,
+  summarizeBatch,
+  summarizeList,
+} from '../../../utils/messages.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
 
 // List Comments
@@ -29,6 +34,7 @@ export const listCommentsTool = defineTool({
   title: toolsMetadata.list_comments.title,
   description: toolsMetadata.list_comments.description,
   inputSchema: ListCommentsInputSchema,
+  outputSchema: ListCommentsOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -41,10 +47,10 @@ export const listCommentsTool = defineTool({
     const after = args.cursor;
     const conn = await issue.comments({ first, after });
     const items = await Promise.all(conn.nodes.map((c) => mapCommentNodeToListItem(c)));
-    
+
     const pageInfo = conn.pageInfo;
     const hasMore = pageInfo?.hasNextPage ?? false;
-    const nextCursor = hasMore ? pageInfo?.endCursor ?? undefined : undefined;
+    const nextCursor = hasMore ? (pageInfo?.endCursor ?? undefined) : undefined;
 
     // Build query echo
     const query = {
@@ -80,7 +86,7 @@ export const listCommentsTool = defineTool({
       nextCursor,
       limit: first,
     });
-    
+
     const preview = previewLinesFromItems(
       items as unknown as Record<string, unknown>[],
       (c) => {
@@ -92,7 +98,7 @@ export const listCommentsTool = defineTool({
         return `${title}: ${body}`;
       },
     );
-    
+
     const message = summarizeList({
       subject: 'Comments',
       count: items.length,
@@ -101,23 +107,30 @@ export const listCommentsTool = defineTool({
       previewLines: preview,
       nextSteps: meta.nextSteps,
     });
-    
-    const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: message }];
-    
+
+    const parts: Array<{ type: 'text'; text: string }> = [
+      { type: 'text', text: message },
+    ];
+
     if (config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
       parts.push({ type: 'text', text: JSON.stringify(structured) });
     }
-    
+
     return { content: parts, structuredContent: structured };
   },
 });
 
 // Add Comments
 const AddCommentsInputSchema = z.object({
-  items: z.array(z.object({
-    issueId: z.string(),
-    body: z.string(),
-  })).min(1).max(50),
+  items: z
+    .array(
+      z.object({
+        issueId: z.string(),
+        body: z.string(),
+      }),
+    )
+    .min(1)
+    .max(50),
   parallel: z.boolean().optional(),
 });
 
@@ -126,6 +139,7 @@ export const addCommentsTool = defineTool({
   title: toolsMetadata.add_comments.title,
   description: toolsMetadata.add_comments.description,
   inputSchema: AddCommentsInputSchema,
+  outputSchema: AddCommentsOutputSchema,
   annotations: {
     readOnlyHint: false,
     destructiveHint: false,
@@ -134,19 +148,13 @@ export const addCommentsTool = defineTool({
   handler: async (args, context: ToolContext): Promise<ToolResult> => {
     const client = await getLinearClient(context);
     const gate = makeConcurrencyGate(config.CONCURRENCY_LIMIT);
-    
-    const results: {
-      index: number;
-      ok: boolean;
-      id?: string;
-      error?: string;
-      code?: string;
-    }[] = [];
-    
+
+    const results: Array<z.input<typeof BatchResultSchema>> = [];
+
     for (let i = 0; i < args.items.length; i++) {
       const it = args.items[i];
       if (!it) continue;
-      
+
       try {
         if (context.signal?.aborted) {
           throw new Error('Operation aborted');
@@ -156,20 +164,23 @@ export const addCommentsTool = defineTool({
         if (i > 0) {
           await delay(100);
         }
-        
+
         const call = () =>
           client.createComment({
             issueId: it.issueId,
             body: it.body,
           });
-        
+
         const payload = await withRetry(
           () => (args.parallel === true ? call() : gate(call)),
           { maxRetries: 3, baseDelayMs: 500 },
         );
-        
+
         results.push({
-          input: { issueId: it.issueId, body: it.body.slice(0, 50) + (it.body.length > 50 ? '...' : '') },
+          input: {
+            issueId: it.issueId,
+            body: it.body.slice(0, 50) + (it.body.length > 50 ? '...' : ''),
+          },
           success: payload.success ?? true,
           id: (payload.comment as unknown as { id?: string } | undefined)?.id,
           // Legacy
@@ -183,7 +194,10 @@ export const addCommentsTool = defineTool({
           error: (error as Error).message,
         });
         results.push({
-          input: { issueId: it.issueId, body: it.body.slice(0, 50) + (it.body.length > 50 ? '...' : '') },
+          input: {
+            issueId: it.issueId,
+            body: it.body.slice(0, 50) + (it.body.length > 50 ? '...' : ''),
+          },
           success: false,
           error: {
             code: 'LINEAR_CREATE_ERROR',
@@ -196,33 +210,33 @@ export const addCommentsTool = defineTool({
         });
       }
     }
-    
+
     const succeeded = results.filter((r) => r.success).length;
     const failed = results.filter((r) => !r.success).length;
-    
+
     const summary = {
       total: args.items.length,
       succeeded,
       failed,
       ok: succeeded,
     };
-    
+
     const meta = {
       nextSteps: ['Use list_comments to verify and retrieve URLs.'],
       relatedTools: ['list_comments', 'update_comments', 'get_issues'],
     };
-    
+
     const structured = AddCommentsOutputSchema.parse({ results, summary, meta });
-    
+
     const failures = results
       .filter((r) => !r.success)
       .map((r) => ({
-        index: r.index,
-        id: r.input?.issueId,
+        index: r.index ?? -1,
+        id: typeof r.input?.issueId === 'string' ? r.input.issueId : undefined,
         error: typeof r.error === 'object' ? r.error.message : (r.error ?? ''),
         code: typeof r.error === 'object' ? r.error.code : undefined,
       }));
-    
+
     // Don't show comment UUIDs (not helpful), just the count
     const text = summarizeBatch({
       action: 'Added comments',
@@ -230,17 +244,18 @@ export const addCommentsTool = defineTool({
       total: args.items.length,
       // Skip okIdentifiers - comment UUIDs aren't useful to show
       failures,
-      nextSteps: succeeded > 0 
-        ? ['Use list_comments to verify and get comment URLs.']
-        : ['Check issueId values with list_issues.'],
+      nextSteps:
+        succeeded > 0
+          ? ['Use list_comments to verify and get comment URLs.']
+          : ['Check issueId values with list_issues.'],
     });
-    
+
     const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text }];
-    
+
     if (config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
       parts.push({ type: 'text', text: JSON.stringify(structured) });
     }
-    
+
     return { content: parts, structuredContent: structured };
   },
 });
@@ -263,6 +278,7 @@ export const updateCommentsTool = defineTool({
   title: toolsMetadata.update_comments.title,
   description: toolsMetadata.update_comments.description,
   inputSchema: UpdateCommentsInputSchema,
+  outputSchema: UpdateCommentsOutputSchema,
   annotations: {
     readOnlyHint: false,
     destructiveHint: false,
@@ -272,13 +288,7 @@ export const updateCommentsTool = defineTool({
     const client = await getLinearClient(context);
     const gate = makeConcurrencyGate(config.CONCURRENCY_LIMIT);
 
-    const results: {
-      index: number;
-      ok: boolean;
-      id?: string;
-      error?: string;
-      code?: string;
-    }[] = [];
+    const results: Array<z.input<typeof BatchResultSchema>> = [];
 
     for (let i = 0; i < args.items.length; i++) {
       const it = args.items[i];
@@ -299,13 +309,16 @@ export const updateCommentsTool = defineTool({
             body: it.body,
           });
 
-        const payload = await withRetry(
-          () => (gate(call)),
-          { maxRetries: 3, baseDelayMs: 500 },
-        );
+        const payload = await withRetry(() => gate(call), {
+          maxRetries: 3,
+          baseDelayMs: 500,
+        });
 
         results.push({
-          input: { id: it.id, body: it.body.slice(0, 50) + (it.body.length > 50 ? '...' : '') },
+          input: {
+            id: it.id,
+            body: it.body.slice(0, 50) + (it.body.length > 50 ? '...' : ''),
+          },
           success: payload.success ?? true,
           id: it.id,
           // Legacy
@@ -354,7 +367,7 @@ export const updateCommentsTool = defineTool({
     const failures = results
       .filter((r) => !r.success)
       .map((r) => ({
-        index: r.index,
+        index: r.index ?? -1,
         id: r.id,
         error: typeof r.error === 'object' ? r.error.message : (r.error ?? ''),
         code: typeof r.error === 'object' ? r.error.code : undefined,
@@ -366,9 +379,10 @@ export const updateCommentsTool = defineTool({
       ok: succeeded,
       total: args.items.length,
       failures,
-      nextSteps: succeeded > 0 
-        ? ['Use list_comments to verify changes.']
-        : ['Check comment IDs with list_comments first.'],
+      nextSteps:
+        succeeded > 0
+          ? ['Use list_comments to verify changes.']
+          : ['Check comment IDs with list_comments first.'],
     });
 
     const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text }];
@@ -380,6 +394,3 @@ export const updateCommentsTool = defineTool({
     return { content: parts, structuredContent: structured };
   },
 });
-
-
-

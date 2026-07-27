@@ -3,15 +3,15 @@
  * Verifies: cycle listing, team filtering, cyclesEnabled check, output shape.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { listCyclesTool } from '../../src/shared/tools/linear/cycles.js';
+import type { ToolContext } from '../../src/shared/tools/types.js';
 import {
   createMockLinearClient,
-  resetMockCalls,
-  type MockLinearClient,
   defaultMockCycles,
+  type MockLinearClient,
+  resetMockCalls,
 } from '../mocks/linear-client.js';
-import type { ToolContext } from '../../src/shared/tools/types.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
@@ -21,7 +21,7 @@ let mockClient: MockLinearClient;
 
 const baseContext: ToolContext = {
   sessionId: 'test-session',
-  providerToken: 'test-token',
+  linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
 
@@ -70,7 +70,10 @@ describe('list_cycles input validation', () => {
   });
 
   it('accepts optional limit', () => {
-    const result = listCyclesTool.inputSchema.safeParse({ teamId: 'team-eng', limit: 10 });
+    const result = listCyclesTool.inputSchema.safeParse({
+      teamId: 'team-eng',
+      limit: 10,
+    });
     expect(result.success).toBe(true);
   });
 
@@ -128,7 +131,10 @@ describe('list_cycles handler', () => {
   });
 
   it('respects limit parameter', async () => {
-    const result = await listCyclesTool.handler({ teamId: 'team-eng', limit: 1 }, baseContext);
+    const result = await listCyclesTool.handler(
+      { teamId: 'team-eng', limit: 1 },
+      baseContext,
+    );
 
     const structured = result.structuredContent as Record<string, unknown>;
     expect(structured.limit).toBe(1);
@@ -141,7 +147,7 @@ describe('list_cycles handler', () => {
     );
 
     expect(result.isError).toBeFalsy();
-    
+
     const structured = result.structuredContent as Record<string, unknown>;
     expect(structured.cursor).toBe('test-cursor');
   });
@@ -202,7 +208,7 @@ describe('list_cycles output shape', () => {
     const items = structured.items as Array<Record<string, unknown>>;
 
     expect(items.length).toBeGreaterThan(0);
-    
+
     const firstCycle = items[0];
     expect(firstCycle.name).toBeDefined();
     expect(firstCycle.number).toBeDefined();
@@ -289,7 +295,8 @@ describe('list_cycles edge cases', () => {
           states: () => Promise.resolve({ nodes: [] }),
           labels: () => Promise.resolve({ nodes: [] }),
           projects: () => Promise.resolve({ nodes: [] }),
-          cycles: () => Promise.resolve({ nodes: [], pageInfo: { hasNextPage: false } }),
+          cycles: () =>
+            Promise.resolve({ nodes: [], pageInfo: { hasNextPage: false } }),
         },
       ],
       cycles: [],
@@ -305,4 +312,3 @@ describe('list_cycles edge cases', () => {
     expect(items).toEqual([]);
   });
 });
-

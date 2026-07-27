@@ -1,26 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { logger } from '../utils/logger.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 
-/**
- * Register prompts with the MCP server.
- * 
- * Add Linear-specific prompts here, e.g.:
- * - Sprint summary prompt
- * - Issue triage prompt
- * - Weekly status report prompt
- */
-export function registerPrompts(server: McpServer): void {
-  // TODO: Add Linear-specific prompts here
-  // Example:
-  // server.registerPrompt('sprint_summary', { ... }, handler);
-
-  logger.debug('prompts', { message: 'No prompts registered (placeholder)' });
-}
-
-/**
- * Emit listChanged when prompts are updated.
- */
-export function emitPromptsListChanged(server: McpServer): void {
-  server.sendPromptListChanged();
-  logger.debug('prompts', { message: 'Prompts list changed notification sent' });
-}
+/** The pre-migration Linear contract does not expose prompts. */
+export function registerPrompts(_server: McpServer): void {}

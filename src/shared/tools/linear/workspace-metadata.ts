@@ -2,13 +2,13 @@
  * Workspace Metadata tool - discover IDs, teams, workflow states, labels, projects.
  */
 
-import { z } from 'zod';
+import { z } from 'zod/v4';
+import { config } from '../../../config/env.js';
 import { toolsMetadata } from '../../../config/metadata.js';
 import { AccountOutputSchema } from '../../../schemas/outputs.js';
 import { getLinearClient } from '../../../services/linear/client.js';
 import { previewLinesFromItems, summarizeList } from '../../../utils/messages.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
-import { config } from '../../../config/env.js';
 
 const InputSchema = z.object({
   include: z
@@ -90,6 +90,7 @@ export const workspaceMetadataTool = defineTool({
   title: toolsMetadata.workspace_metadata.title,
   description: toolsMetadata.workspace_metadata.description,
   inputSchema: InputSchema,
+  outputSchema: AccountOutputSchema,
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -273,19 +274,20 @@ export const workspaceMetadataTool = defineTool({
 
     // Build quickLookup for easy access
     const quickLookup: Record<string, unknown> = {};
-    if (result.viewer) {
-      quickLookup.viewerId = result.viewer.id;
-      quickLookup.viewerName = result.viewer.name;
-      quickLookup.viewerEmail = result.viewer.email;
+    const viewer = result.viewer as
+      | { id: string; name?: string; email?: string }
+      | undefined;
+    if (viewer) {
+      quickLookup.viewerId = viewer.id;
+      quickLookup.viewerName = viewer.name;
+      quickLookup.viewerEmail = viewer.email;
     }
     if (teams.length > 0) {
       quickLookup.teamIds = teams.map((t) => t.id);
       quickLookup.teamByKey = Object.fromEntries(
         teams.filter((t) => t.key).map((t) => [t.key, t.id]),
       );
-      quickLookup.teamByName = Object.fromEntries(
-        teams.map((t) => [t.name, t.id]),
-      );
+      quickLookup.teamByName = Object.fromEntries(teams.map((t) => [t.name, t.id]));
     }
     if (Object.keys(statesByTeamComputed).length > 0) {
       // Flatten all states into a single lookup by name
@@ -358,12 +360,17 @@ export const workspaceMetadataTool = defineTool({
       }),
     );
 
-    if (include.includes('workflow_states') && Object.keys(statesByTeamComputed).length > 0) {
+    if (
+      include.includes('workflow_states') &&
+      Object.keys(statesByTeamComputed).length > 0
+    ) {
       const statePreviewLines: string[] = [];
       for (const [teamId, states] of Object.entries(statesByTeamComputed)) {
         const team = teams.find((t) => t.id === teamId);
         const teamLabel = team?.key ?? team?.name ?? teamId;
-        const statesList = states.map((s) => `${s.name} [${s.type}] → ${s.id}`).join(', ');
+        const statesList = states
+          .map((s) => `${s.name} [${s.type}] → ${s.id}`)
+          .join(', ');
         statePreviewLines.push(`${teamLabel}: ${statesList}`);
       }
       summaryLines.push(
@@ -375,10 +382,14 @@ export const workspaceMetadataTool = defineTool({
       );
     }
 
-    if (include.includes('projects') && Array.isArray(structured.projects) && structured.projects.length > 0) {
-      const projectPreviewLines = (structured.projects as Array<{ id: string; name: string; state?: string }>).map(
-        (p) => `${p.name} [${p.state ?? 'unknown'}] → ${p.id}`,
-      );
+    if (
+      include.includes('projects') &&
+      Array.isArray(structured.projects) &&
+      structured.projects.length > 0
+    ) {
+      const projectPreviewLines = (
+        structured.projects as Array<{ id: string; name: string; state?: string }>
+      ).map((p) => `${p.name} [${p.state ?? 'unknown'}] → ${p.id}`);
       summaryLines.push(
         summarizeList({
           subject: 'Projects',
@@ -393,17 +404,10 @@ export const workspaceMetadataTool = defineTool({
       text: `Loaded workspace bootstrap for ${viewerBit}${viewerIdBit}. ${summaryLines.join(' ')}`,
     });
 
-    if (config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
+    if (context.includeJsonInContent ?? config.LINEAR_MCP_INCLUDE_JSON_IN_CONTENT) {
       parts.push({ type: 'text', text: JSON.stringify(structured) });
     }
 
     return { content: parts, structuredContent: structured };
   },
 });
-
-
-
-
-
-
-

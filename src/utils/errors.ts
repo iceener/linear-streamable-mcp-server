@@ -184,7 +184,9 @@ export function validateFilter(
       const isComparator = VALID_COMPARATORS.includes(
         subKey as (typeof VALID_COMPARATORS)[number],
       );
-      const isLogical = LOGICAL_OPERATORS.includes(subKey as (typeof LOGICAL_OPERATORS)[number]);
+      const isLogical = LOGICAL_OPERATORS.includes(
+        subKey as (typeof LOGICAL_OPERATORS)[number],
+      );
 
       if (!isComparator && !isLogical) {
         // Could be a nested field (e.g., state.type) - recurse
@@ -240,4 +242,3 @@ export function getZeroResultHints(context: {
 
   return hints;
 }
-

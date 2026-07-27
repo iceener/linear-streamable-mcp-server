@@ -3,11 +3,15 @@
  * Verifies: input validation, batch creation, dry run, error handling.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createIssuesTool } from '../../src/shared/tools/linear/create-issues.js';
-import { createMockLinearClient, resetMockCalls, type MockLinearClient } from '../mocks/linear-client.js';
 import type { ToolContext } from '../../src/shared/tools/types.js';
 import createIssuesFixtures from '../fixtures/tool-inputs/create-issues.json';
+import {
+  createMockLinearClient,
+  type MockLinearClient,
+  resetMockCalls,
+} from '../mocks/linear-client.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
@@ -17,7 +21,7 @@ let mockClient: MockLinearClient;
 
 const baseContext: ToolContext = {
   sessionId: 'test-session',
-  providerToken: 'test-token',
+  linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
 
@@ -232,7 +236,9 @@ describe('create_issues handler', () => {
 
     expect(summary.failed).toBe(1);
     expect(results[0].success).toBe(false);
-    expect((results[0].error as Record<string, unknown>).message).toContain('No user found');
+    expect((results[0].error as Record<string, unknown>).message).toContain(
+      'No user found',
+    );
     expect((results[0].error as Record<string, unknown>).code).toBe('USER_NOT_FOUND');
   });
 
@@ -368,15 +374,22 @@ describe('create_issues error handling', () => {
     const results = structured.results as Array<Record<string, unknown>>;
 
     expect(results[0].success).toBe(false);
-    expect((results[0].error as Record<string, unknown>).message).toContain('API rate limit');
-    expect((results[0].error as Record<string, unknown>).code).toBe('LINEAR_CREATE_ERROR');
+    expect((results[0].error as Record<string, unknown>).message).toContain(
+      'API rate limit',
+    );
+    expect((results[0].error as Record<string, unknown>).code).toBe(
+      'LINEAR_CREATE_ERROR',
+    );
   });
 
   it('continues batch on partial failure', async () => {
     // First call fails, second succeeds
     (mockClient.createIssue as ReturnType<typeof vi.fn>)
       .mockRejectedValueOnce(new Error('First failed'))
-      .mockResolvedValueOnce({ success: true, issue: { id: 'new-id', identifier: 'ENG-100' } });
+      .mockResolvedValueOnce({
+        success: true,
+        issue: { id: 'new-id', identifier: 'ENG-100' },
+      });
 
     const result = await createIssuesTool.handler(
       {
@@ -399,4 +412,3 @@ describe('create_issues error handling', () => {
     expect(results[1].ok).toBe(true);
   });
 });
-

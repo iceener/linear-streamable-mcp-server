@@ -1,11 +1,12 @@
 /**
  * Show Issues UI tool.
- * 
+ *
  * Opens an interactive Linear issues dashboard UI.
  * The UI allows users to browse, filter, and manage issues visually.
  */
 
-import { z } from 'zod';
+import { z } from 'zod/v4';
+import { ShowIssuesUIOutputSchema } from '../../../schemas/outputs.js';
 import { defineTool, type ToolContext, type ToolResult } from '../types.js';
 
 const UI_RESOURCE_URI = 'ui://linear/issues';
@@ -28,6 +29,7 @@ export const showIssuesUITool = defineTool({
   description:
     'Opens an interactive Linear issues dashboard. The UI displays issues in a dark, minimalistic Linear-style interface where users can browse, filter, and manage issues visually. Use this when the user wants to see their issues in a visual interface rather than text output.',
   inputSchema: InputSchema,
+  outputSchema: ShowIssuesUIOutputSchema,
   annotations: {
     title: 'Show Issues Dashboard',
     readOnlyHint: true,
