@@ -1,16 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/server';
-import { issuesUIMetadata, issuesUIResource } from './issues-ui.resource.js';
+import { issuesUi } from './issues-ui';
 
-/** Register the existing Linear issues UI through the public v2 resource API. */
-export function registerResources(server: McpServer): void {
-  server.registerResource(
-    issuesUIMetadata.name,
-    issuesUIMetadata.uri,
-    {
-      description: issuesUIMetadata.description,
-      mimeType: issuesUIMetadata.mimeType,
-      cacheHint: { ttlMs: 60_000, cacheScope: 'private' },
-    },
-    async () => issuesUIResource.handler(),
-  );
-}
+/** Every resource and resource template. */
+export const resources = [issuesUi];

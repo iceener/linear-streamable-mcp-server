@@ -3,8 +3,8 @@
  * Provides configurable responses for all Linear SDK methods used by tools.
  */
 
-import type { LinearClient } from '@linear/sdk';
-import { vi } from 'vitest';
+import { vi } from 'bun:test';
+import type { Rows } from '../tools/harness';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -12,114 +12,114 @@ import { vi } from 'vitest';
 
 export interface MockViewer {
   id: string;
-  name?: string;
-  email?: string;
-  displayName?: string;
-  avatarUrl?: string;
-  timezone?: string;
-  createdAt?: Date;
+  name?: string | undefined;
+  email?: string | undefined;
+  displayName?: string | undefined;
+  avatarUrl?: string | undefined;
+  timezone?: string | undefined;
+  createdAt?: Date | undefined;
 }
 
 export interface MockTeam {
   id: string;
-  key?: string;
+  key?: string | undefined;
   name: string;
-  description?: string;
-  defaultIssueEstimate?: number;
-  cyclesEnabled?: boolean;
-  issueEstimationAllowZero?: boolean;
-  issueEstimationExtended?: boolean;
-  issueEstimationType?: string;
+  description?: string | undefined;
+  defaultIssueEstimate?: number | undefined;
+  cyclesEnabled?: boolean | undefined;
+  issueEstimationAllowZero?: boolean | undefined;
+  issueEstimationExtended?: boolean | undefined;
+  issueEstimationType?: string | undefined;
   states: () => Promise<{ nodes: MockWorkflowState[] }>;
   labels: (args: { first: number }) => Promise<{ nodes: MockLabel[] }>;
   projects: (args: { first: number }) => Promise<{ nodes: MockProject[] }>;
   cycles: (args?: {
-    first?: number;
-    after?: string;
-    includeArchived?: boolean;
-    orderBy?: unknown;
+    first?: number | undefined;
+    after?: string | undefined;
+    includeArchived?: boolean | undefined;
+    orderBy?: unknown | undefined;
   }) => Promise<{ nodes: MockCycle[]; pageInfo: MockPageInfo }>;
 }
 
 export interface MockWorkflowState {
   id: string;
   name: string;
-  type?: string;
+  type?: string | undefined;
 }
 
 export interface MockLabel {
   id: string;
   name: string;
-  color?: string;
-  description?: string;
+  color?: string | undefined;
+  description?: string | undefined;
 }
 
 export interface MockProject {
   id: string;
   name: string;
-  state?: string;
-  lead?: { id?: string };
-  leadId?: string;
-  teamId?: string;
-  targetDate?: string;
-  createdAt?: Date | string;
+  state?: string | undefined;
+  lead?: { id?: string | undefined } | undefined;
+  leadId?: string | undefined;
+  teamId?: string | undefined;
+  targetDate?: string | undefined;
+  createdAt?: Date | string | undefined;
 }
 
 export interface MockIssue {
   id: string;
-  identifier?: string;
+  identifier?: string | undefined;
   title: string;
-  description?: string;
-  priority?: number;
-  estimate?: number;
+  description?: string | undefined;
+  priority?: number | undefined;
+  estimate?: number | undefined;
   createdAt: Date;
   updatedAt: Date;
-  archivedAt?: Date;
-  dueDate?: string;
-  url?: string;
-  branchName?: string;
-  state: Promise<{ id: string; name: string; type?: string }>;
-  project: Promise<{ id: string; name?: string } | null>;
-  assignee: Promise<{ id: string; name?: string } | null>;
+  archivedAt?: Date | undefined;
+  dueDate?: string | undefined;
+  url?: string | undefined;
+  branchName?: string | undefined;
+  state: Promise<{ id: string; name: string; type?: string | undefined }>;
+  project: Promise<{ id: string; name?: string | undefined } | null>;
+  assignee: Promise<{ id: string; name?: string | undefined } | null>;
   labels: () => Promise<{ nodes: MockLabel[] }>;
   attachments: () => Promise<{ nodes: unknown[] }>;
   comments: (args?: {
-    first?: number;
-    after?: string;
+    first?: number | undefined;
+    after?: string | undefined;
   }) => Promise<{ nodes: MockComment[]; pageInfo: MockPageInfo }>;
-  team?: { id: string } | (() => Promise<{ id: string }>);
+  team?: { id: string } | (() => Promise<{ id: string }>) | undefined;
 }
 
 export interface MockUser {
   id: string;
-  name?: string;
-  email?: string;
-  displayName?: string;
-  avatarUrl?: string;
+  name?: string | undefined;
+  email?: string | undefined;
+  displayName?: string | undefined;
+  avatarUrl?: string | undefined;
 }
 
 export interface MockComment {
   id: string;
-  body?: string;
-  url?: string;
+  body?: string | undefined;
+  url?: string | undefined;
   createdAt: Date;
-  updatedAt?: Date;
-  user?: { id: string; name?: string };
+  updatedAt?: Date | undefined;
+  user?: { id: string; name?: string | undefined };
 }
 
 export interface MockCycle {
   id: string;
-  name?: string;
-  number?: number;
-  startsAt?: Date;
-  endsAt?: Date;
-  completedAt?: Date;
+  name?: string | undefined;
+  number?: number | undefined;
+  startsAt?: Date | undefined;
+  endsAt?: Date | undefined;
+  completedAt?: Date | undefined;
   team: { id: string };
 }
 
 export interface MockPageInfo {
   hasNextPage: boolean;
-  endCursor?: string;
+  endCursor?: string | undefined;
 }
 
 export interface MockConnection<T> {
@@ -269,8 +269,7 @@ export const defaultMockIssues: MockIssue[] = [
     state: Promise.resolve({ id: 'state-todo', name: 'Todo', type: 'unstarted' }),
     project: Promise.resolve({ id: 'project-001', name: 'Q1 Release' }),
     assignee: Promise.resolve(null),
-    labels: () =>
-      Promise.resolve({ nodes: [{ id: 'label-feature', name: 'Feature' }] }),
+    labels: () => Promise.resolve({ nodes: [{ id: 'label-feature', name: 'Feature' }] }),
     attachments: () => Promise.resolve({ nodes: [] }),
     comments: () => Promise.resolve({ nodes: [], pageInfo: { hasNextPage: false } }),
     team: { id: 'team-eng' },
@@ -285,8 +284,7 @@ export const defaultMockIssues: MockIssue[] = [
     state: Promise.resolve({ id: 'state-backlog', name: 'Backlog', type: 'backlog' }),
     project: Promise.resolve(null),
     assignee: Promise.resolve(null),
-    labels: () =>
-      Promise.resolve({ nodes: [{ id: 'label-docs', name: 'Documentation' }] }),
+    labels: () => Promise.resolve({ nodes: [{ id: 'label-docs', name: 'Documentation' }] }),
     attachments: () => Promise.resolve({ nodes: [] }),
     comments: () => Promise.resolve({ nodes: [], pageInfo: { hasNextPage: false } }),
     team: { id: 'team-eng' },
@@ -320,8 +318,7 @@ export const defaultMockIssues: MockIssue[] = [
     }),
     project: Promise.resolve({ id: 'project-002', name: 'Infrastructure' }),
     assignee: Promise.resolve({ id: 'user-001', name: 'Test User' }),
-    labels: () =>
-      Promise.resolve({ nodes: [{ id: 'label-feature', name: 'Feature' }] }),
+    labels: () => Promise.resolve({ nodes: [{ id: 'label-feature', name: 'Feature' }] }),
     attachments: () => Promise.resolve({ nodes: [] }),
     comments: () => Promise.resolve({ nodes: [], pageInfo: { hasNextPage: false } }),
     team: { id: 'team-design' },
@@ -363,37 +360,37 @@ export const defaultMockCycles: MockCycle[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface MockLinearClientConfig {
-  viewer?: MockViewer;
-  teams?: MockTeam[];
-  issues?: MockIssue[];
-  users?: MockUser[];
-  cycles?: MockCycle[];
-  projects?: MockProject[];
-  comments?: MockComment[];
-  favorites?: unknown[];
+  viewer?: MockViewer | undefined;
+  teams?: MockTeam[] | undefined;
+  issues?: MockIssue[] | undefined;
+  users?: MockUser[] | undefined;
+  cycles?: MockCycle[] | undefined;
+  projects?: MockProject[] | undefined;
+  comments?: MockComment[] | undefined;
+  favorites?: unknown[] | undefined;
 }
 
 export interface MockLinearClient {
   viewer: Promise<MockViewer>;
-  teams: (args?: { first?: number }) => Promise<MockConnection<MockTeam>>;
+  teams: (args?: { first?: number | undefined }) => Promise<MockConnection<MockTeam>>;
   team: (id: string) => Promise<MockTeam | null>;
   issues: (args?: Record<string, unknown>) => Promise<MockConnection<MockIssue>>;
   issue: (id: string) => Promise<MockIssue | null>;
-  users: (args?: { first?: number }) => Promise<MockConnection<MockUser>>;
-  favorites: (args?: { first?: number }) => Promise<MockConnection<unknown>>;
+  users: (args?: { first?: number | undefined }) => Promise<MockConnection<MockUser>>;
+  favorites: (args?: { first?: number | undefined }) => Promise<MockConnection<unknown>>;
   projects: (args?: {
-    first?: number;
-    after?: string;
-    filter?: Record<string, unknown>;
+    first?: number | undefined;
+    after?: string | undefined;
+    filter?: Record<string, unknown> | undefined;
   }) => Promise<MockConnection<MockProject>>;
   cycles: (args?: {
-    first?: number;
-    after?: string;
-    filter?: Record<string, unknown>;
+    first?: number | undefined;
+    after?: string | undefined;
+    filter?: Record<string, unknown> | undefined;
   }) => Promise<MockConnection<MockCycle>>;
   comments: (
     issueId: string,
-    args?: { first?: number; after?: string },
+    args?: { first?: number | undefined; after?: string | undefined },
   ) => Promise<MockConnection<MockComment>>;
   createIssue: (
     input: Record<string, unknown>,
@@ -418,24 +415,19 @@ export interface MockLinearClient {
   ) => Promise<{ success: boolean; comment?: { id: string } }>;
   /** Raw GraphQL client for rawRequest calls */
   client: {
-    rawRequest: (
-      query: string,
-      variables?: Record<string, unknown>,
-    ) => Promise<{ data: unknown }>;
+    rawRequest: (query: string, variables?: Record<string, unknown>) => Promise<{ data: unknown }>;
   };
   // Internal config for test assertions
   _config: MockLinearClientConfig;
   _calls: {
-    issues: Array<Record<string, unknown>>;
-    createIssue: Array<Record<string, unknown>>;
-    updateIssue: Array<{ id: string; input: Record<string, unknown> }>;
-    rawRequest: Array<{ query: string; variables?: Record<string, unknown> }>;
+    issues: Rows<Record<string, unknown>>;
+    createIssue: Rows<Record<string, unknown>>;
+    updateIssue: Rows<{ id: string; input: Record<string, unknown> }>;
+    rawRequest: Rows<{ query: string; variables?: Record<string, unknown> | undefined }>;
   };
 }
 
-export function createMockLinearClient(
-  config: MockLinearClientConfig = {},
-): MockLinearClient {
+export function createMockLinearClient(config: MockLinearClientConfig = {}): MockLinearClient {
   const {
     viewer = defaultMockViewer,
     teams = defaultMockTeams,
@@ -447,17 +439,17 @@ export function createMockLinearClient(
     favorites = [],
   } = config;
 
-  const calls = {
-    issues: [] as Array<Record<string, unknown>>,
-    createIssue: [] as Array<Record<string, unknown>>,
-    updateIssue: [] as Array<{ id: string; input: Record<string, unknown> }>,
-    rawRequest: [] as Array<{ query: string; variables?: Record<string, unknown> }>,
+  const calls: MockLinearClient['_calls'] = {
+    issues: rows(),
+    createIssue: rows(),
+    updateIssue: rows(),
+    rawRequest: rows(),
   };
 
   return {
     viewer: Promise.resolve(viewer),
 
-    teams: vi.fn(async (args?: { first?: number }) => ({
+    teams: vi.fn(async (args?: { first?: number | undefined }) => ({
       nodes: teams.slice(0, args?.first ?? teams.length),
       pageInfo: { hasNextPage: false },
     })),
@@ -480,7 +472,7 @@ export function createMockLinearClient(
       return issues.find((i) => i.id === id || i.identifier === id) ?? null;
     }),
 
-    users: vi.fn(async (args?: { first?: number }) => ({
+    users: vi.fn(async (args?: { first?: number | undefined }) => ({
       nodes: users.slice(0, args?.first ?? users.length),
       pageInfo: { hasNextPage: false },
     })),
@@ -492,9 +484,9 @@ export function createMockLinearClient(
 
     projects: vi.fn(
       async (args?: {
-        first?: number;
-        after?: string;
-        filter?: Record<string, unknown>;
+        first?: number | undefined;
+        after?: string | undefined;
+        filter?: Record<string, unknown> | undefined;
       }) => {
         const limit = args?.first ?? projects.length;
         return {
@@ -509,16 +501,14 @@ export function createMockLinearClient(
 
     cycles: vi.fn(
       async (args?: {
-        first?: number;
-        after?: string;
-        filter?: Record<string, unknown>;
+        first?: number | undefined;
+        after?: string | undefined;
+        filter?: Record<string, unknown> | undefined;
       }) => {
         const limit = args?.first ?? cycles.length;
-        const teamFilter = args?.filter?.team as { id?: { eq?: string } } | undefined;
+        const teamFilter = args?.filter?.team as { id?: { eq?: string | undefined } } | undefined;
         const teamId = teamFilter?.id?.eq;
-        const filtered = teamId
-          ? cycles.filter((cycle) => cycle.team.id === teamId)
-          : cycles;
+        const filtered = teamId ? cycles.filter((cycle) => cycle.team.id === teamId) : cycles;
         return {
           nodes: filtered.slice(0, limit),
           pageInfo: {
@@ -530,7 +520,10 @@ export function createMockLinearClient(
     ),
 
     comments: vi.fn(
-      async (issueId: string, args?: { first?: number; after?: string }) => {
+      async (
+        _issueId: string,
+        args?: { first?: number | undefined; after?: string | undefined },
+      ) => {
         const limit = args?.first ?? comments.length;
         return {
           nodes: comments.slice(0, limit),
@@ -557,9 +550,7 @@ export function createMockLinearClient(
       const existing = issues.find((i) => i.id === id || i.identifier === id);
       return {
         success: !!existing,
-        issue: existing
-          ? { id: existing.id, identifier: existing.identifier ?? id }
-          : undefined,
+        ...(existing && { issue: { id: existing.id, identifier: existing.identifier ?? id } }),
       };
     }),
 
@@ -573,12 +564,12 @@ export function createMockLinearClient(
       project: { id, name: (input.name as string) ?? 'Updated Project' },
     })),
 
-    createComment: vi.fn(async (input: Record<string, unknown>) => ({
+    createComment: vi.fn(async (_input: Record<string, unknown>) => ({
       success: true,
       comment: { id: `comment-new-${Date.now()}` },
     })),
 
-    updateComment: vi.fn(async (id: string, input: Record<string, unknown>) => ({
+    updateComment: vi.fn(async (id: string, _input: Record<string, unknown>) => ({
       success: true,
       comment: { id },
     })),
@@ -591,9 +582,7 @@ export function createMockLinearClient(
         const filter = variables?.filter as Record<string, unknown> | undefined;
 
         // Helper to apply filters to issues
-        const applyFilters = async (
-          issuesToFilter: MockIssue[],
-        ): Promise<MockIssue[]> => {
+        const applyFilters = async (issuesToFilter: MockIssue[]): Promise<MockIssue[]> => {
           if (!filter) return issuesToFilter;
 
           const results: MockIssue[] = [];
@@ -630,9 +619,7 @@ export function createMockLinearClient(
               if (teamFilter.id && typeof teamFilter.id === 'object') {
                 const idFilter = teamFilter.id as Record<string, unknown>;
                 const issueTeamId =
-                  typeof issue.team === 'function'
-                    ? (await issue.team()).id
-                    : issue.team?.id;
+                  typeof issue.team === 'function' ? (await issue.team()).id : issue.team?.id;
                 if (idFilter.eq && issueTeamId !== idFilter.eq) {
                   matches = false;
                 }
@@ -669,9 +656,7 @@ export function createMockLinearClient(
                   if (titleFilter.containsIgnoreCase) {
                     return issue.title
                       .toLowerCase()
-                      .includes(
-                        (titleFilter.containsIgnoreCase as string).toLowerCase(),
-                      );
+                      .includes((titleFilter.containsIgnoreCase as string).toLowerCase());
                   }
                 }
                 return false;
@@ -792,10 +777,10 @@ export function createMockLinearClient(
  * Call this in beforeEach to ensure clean state.
  */
 export function resetMockCalls(client: MockLinearClient): void {
-  client._calls.issues = [];
-  client._calls.createIssue = [];
-  client._calls.updateIssue = [];
-  client._calls.rawRequest = [];
+  client._calls.issues = rows();
+  client._calls.createIssue = rows();
+  client._calls.updateIssue = rows();
+  client._calls.rawRequest = rows();
 
   // Reset vi.fn() call history
   (client.teams as ReturnType<typeof vi.fn>).mockClear();
@@ -813,4 +798,9 @@ export function resetMockCalls(client: MockLinearClient): void {
   (client.updateProject as ReturnType<typeof vi.fn>).mockClear();
   (client.createComment as ReturnType<typeof vi.fn>).mockClear();
   (client.client.rawRequest as ReturnType<typeof vi.fn>).mockClear();
+}
+
+/** An empty call log; tests read its first entries after checking the length. */
+function rows<T>(): Rows<T> {
+  return [] as unknown as Rows<T>;
 }

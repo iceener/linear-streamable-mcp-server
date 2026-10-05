@@ -3,32 +3,28 @@
  * Verifies: input validation, batch updates, state/label changes, error handling.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { updateIssuesTool } from '../../src/shared/tools/linear/update-issues.js';
-import type { ToolContext } from '../../src/shared/tools/types.js';
+import { beforeEach, describe, expect, it, vi } from 'bun:test';
+import { updateIssues } from '../../src/tools/update-issues';
 import updateIssuesFixtures from '../fixtures/tool-inputs/update-issues.json';
 import {
   createMockLinearClient,
   type MockLinearClient,
   resetMockCalls,
-} from '../mocks/linear-client.js';
+} from '../mocks/linear-client';
+import { type CallerContext, type Rows, toolUnderTest } from './harness';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
 // ─────────────────────────────────────────────────────────────────────────────
 
 let mockClient: MockLinearClient;
+const updateIssuesTool = toolUnderTest(updateIssues, () => mockClient);
 
-const baseContext: ToolContext = {
+const baseContext: CallerContext = {
   sessionId: 'test-session',
   linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
-
-// Mock the getLinearClient function
-vi.mock('../../src/services/linear/client.js', () => ({
-  getLinearClient: vi.fn(() => Promise.resolve(mockClient)),
-}));
 
 beforeEach(() => {
   mockClient = createMockLinearClient();
@@ -209,8 +205,9 @@ describe('update_issues handler', () => {
 
   it('archives issue (calls archiveIssue method)', async () => {
     // Add archiveIssue method to mock
-    (mockClient as unknown as { archiveIssue: ReturnType<typeof vi.fn> }).archiveIssue =
-      vi.fn(async () => ({ success: true }));
+    (mockClient as unknown as { archiveIssue: ReturnType<typeof vi.fn> }).archiveIssue = vi.fn(
+      async () => ({ success: true }),
+    );
 
     const result = await updateIssuesTool.handler(
       { items: [{ id: 'issue-001', archived: true }] },
@@ -221,8 +218,7 @@ describe('update_issues handler', () => {
 
     // Archive uses a separate archiveIssue method, not updateIssue
     expect(
-      (mockClient as unknown as { archiveIssue: ReturnType<typeof vi.fn> })
-        .archiveIssue,
+      (mockClient as unknown as { archiveIssue: ReturnType<typeof vi.fn> }).archiveIssue,
     ).toHaveBeenCalledWith('issue-001');
   });
 });
@@ -313,7 +309,7 @@ describe('update_issues output shape', () => {
     expect(structured.results).toBeDefined();
     expect(structured.summary).toBeDefined();
 
-    const results = structured.results as Array<Record<string, unknown>>;
+    const results = structured.results as Rows;
     expect(Array.isArray(results)).toBe(true);
 
     for (const r of results) {
@@ -345,12 +341,10 @@ describe('update_issues error handling', () => {
     expect(result.isError).toBeFalsy();
 
     const structured = result.structuredContent as Record<string, unknown>;
-    const results = structured.results as Array<Record<string, unknown>>;
+    const results = structured.results as Rows;
 
     expect(results[0].success).toBe(false);
-    expect((results[0].error as Record<string, unknown>).message).toContain(
-      'Issue not found',
-    );
+    expect((results[0].error as Record<string, unknown>).message).toContain('Issue not found');
   });
 
   it('continues batch on partial failure', async () => {

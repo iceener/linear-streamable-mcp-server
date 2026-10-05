@@ -3,33 +3,28 @@
  * Verifies: input validation, output shape, viewer/teams/states/labels/projects fetching.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { z } from 'zod';
-import { workspaceMetadataTool } from '../../src/shared/tools/linear/workspace-metadata.js';
-import type { ToolContext } from '../../src/shared/tools/types.js';
+import { beforeEach, describe, expect, it } from 'bun:test';
+import { workspaceMetadata } from '../../src/tools/workspace-metadata';
 import workspaceMetadataFixtures from '../fixtures/tool-inputs/workspace-metadata.json';
 import {
   createMockLinearClient,
   type MockLinearClient,
   resetMockCalls,
-} from '../mocks/linear-client.js';
+} from '../mocks/linear-client';
+import { type CallerContext, type Rows, toolUnderTest } from './harness';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
 // ─────────────────────────────────────────────────────────────────────────────
 
 let mockClient: MockLinearClient;
+const workspaceMetadataTool = toolUnderTest(workspaceMetadata, () => mockClient);
 
-const baseContext: ToolContext = {
+const baseContext: CallerContext = {
   sessionId: 'test-session',
   linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
-
-// Mock the getLinearClient function
-vi.mock('../../src/services/linear/client.js', () => ({
-  getLinearClient: vi.fn(() => Promise.resolve(mockClient)),
-}));
 
 beforeEach(() => {
   mockClient = createMockLinearClient();
@@ -92,10 +87,7 @@ describe('workspace_metadata input validation', () => {
 
 describe('workspace_metadata handler', () => {
   it('returns viewer profile when include contains "profile"', async () => {
-    const result = await workspaceMetadataTool.handler(
-      { include: ['profile'] },
-      baseContext,
-    );
+    const result = await workspaceMetadataTool.handler({ include: ['profile'] }, baseContext);
 
     expect(result.isError).toBeFalsy();
     expect(result.structuredContent).toBeDefined();
@@ -111,10 +103,7 @@ describe('workspace_metadata handler', () => {
   });
 
   it('returns teams when include contains "teams"', async () => {
-    const result = await workspaceMetadataTool.handler(
-      { include: ['teams'] },
-      baseContext,
-    );
+    const result = await workspaceMetadataTool.handler({ include: ['teams'] }, baseContext);
 
     expect(result.isError).toBeFalsy();
     const structured = result.structuredContent as Record<string, unknown>;
@@ -122,7 +111,7 @@ describe('workspace_metadata handler', () => {
     expect(structured.teams).toBeDefined();
     expect(Array.isArray(structured.teams)).toBe(true);
 
-    const teams = structured.teams as Array<Record<string, unknown>>;
+    const teams = structured.teams as Rows;
     expect(teams.length).toBe(2);
     expect(teams[0].id).toBe('team-eng');
     expect(teams[0].key).toBe('ENG');
@@ -140,12 +129,13 @@ describe('workspace_metadata handler', () => {
     const structured = result.structuredContent as Record<string, unknown>;
 
     expect(structured.workflowStatesByTeam).toBeDefined();
-    const statesByTeam = structured.workflowStatesByTeam as Record<string, unknown[]>;
+    const statesByTeam = structured.workflowStatesByTeam as Record<string, Rows<unknown>>;
 
     expect(statesByTeam['team-eng']).toBeDefined();
-    expect(statesByTeam['team-eng'].length).toBe(5);
+    const engStates = statesByTeam['team-eng'] as Rows<unknown>;
+    expect(engStates.length).toBe(5);
 
-    const inProgressState = statesByTeam['team-eng'].find(
+    const inProgressState = engStates.find(
       (s: unknown) => (s as Record<string, unknown>).name === 'In Progress',
     );
     expect(inProgressState).toBeDefined();
@@ -162,14 +152,13 @@ describe('workspace_metadata handler', () => {
     const structured = result.structuredContent as Record<string, unknown>;
 
     expect(structured.labelsByTeam).toBeDefined();
-    const labelsByTeam = structured.labelsByTeam as Record<string, unknown[]>;
+    const labelsByTeam = structured.labelsByTeam as Record<string, Rows<unknown>>;
 
     expect(labelsByTeam['team-eng']).toBeDefined();
-    expect(labelsByTeam['team-eng'].length).toBe(3);
+    const engLabels = labelsByTeam['team-eng'] as Rows<unknown>;
+    expect(engLabels.length).toBe(3);
 
-    const bugLabel = labelsByTeam['team-eng'].find(
-      (l: unknown) => (l as Record<string, unknown>).name === 'Bug',
-    );
+    const bugLabel = engLabels.find((l: unknown) => (l as Record<string, unknown>).name === 'Bug');
     expect(bugLabel).toBeDefined();
     expect((bugLabel as Record<string, unknown>).color).toBe('#ff0000');
   });
@@ -184,7 +173,7 @@ describe('workspace_metadata handler', () => {
     const structured = result.structuredContent as Record<string, unknown>;
 
     expect(structured.projects).toBeDefined();
-    const projects = structured.projects as Array<Record<string, unknown>>;
+    const projects = structured.projects as Rows;
 
     expect(projects.length).toBeGreaterThan(0);
     expect(projects[0].name).toBe('Q1 Release');
@@ -217,7 +206,7 @@ describe('workspace_metadata handler', () => {
     expect(result.isError).toBeFalsy();
     const structured = result.structuredContent as Record<string, unknown>;
 
-    const teams = structured.teams as Array<Record<string, unknown>>;
+    const teams = structured.teams as Rows;
     expect(teams.length).toBe(1);
     expect(teams[0].id).toBe('team-eng');
 
@@ -233,7 +222,7 @@ describe('workspace_metadata handler', () => {
 
     expect(result.isError).toBeFalsy();
     const structured = result.structuredContent as Record<string, unknown>;
-    const projects = structured.projects as Array<Record<string, unknown>>;
+    const projects = structured.projects as Rows;
 
     // With 2 teams and limit 1, should get at most 2 projects (1 per team)
     expect(projects.length).toBeLessThanOrEqual(2);
@@ -255,10 +244,7 @@ describe('workspace_metadata handler', () => {
   });
 
   it('returns text content with viewer info', async () => {
-    const result = await workspaceMetadataTool.handler(
-      { include: ['profile'] },
-      baseContext,
-    );
+    const result = await workspaceMetadataTool.handler({ include: ['profile'] }, baseContext);
 
     expect(result.content).toBeDefined();
     expect(result.content.length).toBeGreaterThan(0);
@@ -300,7 +286,7 @@ describe('workspace_metadata output schema compliance', () => {
 
     // Verify teams shape if present
     if (structured.teams) {
-      const teams = structured.teams as Array<Record<string, unknown>>;
+      const teams = structured.teams as Rows;
       for (const team of teams) {
         expect(typeof team.id).toBe('string');
         expect(typeof team.name).toBe('string');

@@ -1,0 +1,50 @@
+// Production configuration for linear-mcp: `bun run deploy` uses it.
+// This file is gitignored. It names the deployed Worker, its account, its storage IDs and
+// the allowlists. wrangler.production.example.jsonc has the same shape with stand-in
+// values; keep the two in step (tests/production.test.ts checks the shape).
+// Secrets (wrangler secret put NAME --config wrangler.production.jsonc): PROVIDER_CLIENT_ID,
+// PROVIDER_CLIENT_SECRET, RS_TOKENS_ENC_KEY.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "linear-mcp",
+  "account_id": "<your-account-id>",
+  "workers_dev": true,
+  "vars": {
+    "NODE_ENV": "production",
+    "MCP_PUBLIC_URL": "https://linear-mcp.example.workers.dev/mcp",
+    "MCP_ALLOWED_HOSTS": "linear-mcp.example.workers.dev",
+    "MCP_ALLOWED_ORIGIN_HOSTNAMES": "linear-mcp.example.workers.dev,claude.ai,claude.com,alice.example.org,ai.example.net,agi.example.net,example.org",
+    "MCP_LEGACY_MODE": "stateless",
+    "MCP_MAX_REQUEST_BYTES": "1048576",
+    "AUTH_MODE": "oauth",
+    "OAUTH_ISSUER_URL": "https://linear-mcp.example.workers.dev",
+    "OAUTH_AUTHORIZATION_URL": "https://linear-mcp.example.workers.dev/authorize",
+    "OAUTH_TOKEN_URL": "https://linear-mcp.example.workers.dev/token",
+    "OAUTH_REGISTRATION_URL": "https://linear-mcp.example.workers.dev/register",
+    "OAUTH_SCOPES": "read write",
+    "PROXY_REDIRECT_ALLOWLIST": "alice://oauth/callback,https://claude.ai/api/mcp/auth_callback,https://claude.com/api/mcp/auth_callback,https://agi.example.net/mcp/oauth/linear/callback,https://ai.example.net/api/mcp/oauth/linear/callback,https://alice.example.org/api/mcp/oauth/linear/callback,http://127.0.0.1:*/oauth/callback,https://wonderlands.example.net/integration/oauth/callback",
+    "LOG_LEVEL": "info"
+  },
+  "kv_namespaces": [{ "binding": "TOKENS", "id": "<your-kv-namespace-id>" }],
+  "durable_objects": {
+    "bindings": [{ "name": "OAUTH_AUTHORITY", "class_name": "NativeOAuthAuthority" }]
+  },
+
+  // The same code and runtime as wrangler.jsonc.
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-08",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.1 }
+  },
+
+  // Applied in production. Only append: Cloudflare records which tags ran.
+  "migrations": [
+    {
+      "tag": "v1-native-oauth-authority",
+      "new_sqlite_classes": ["NativeOAuthAuthority"]
+    }
+  ]
+}

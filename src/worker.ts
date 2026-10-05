@@ -1,33 +1,56 @@
-import { preloadSchemas } from '@modelcontextprotocol/server';
-import { initializeWorkerTokenStore } from './adapters/http-workers/index.js';
-import { buildHttpApp, type HttpRuntime } from './http/app.js';
-import { parseConfig } from './shared/config/env.js';
+import { durableObjectAuthority } from './oauth/authority-do';
+import { createEncryptor } from './oauth/crypto';
+import { KvTokenStore } from './oauth/token-store-kv';
+import { type App, createApp } from './platform/app';
+import { type Config, ConfigError, parseConfig } from './platform/config';
+import { createLogger } from './platform/logger';
+import type { Runtime } from './server';
 
-preloadSchemas();
+export { NativeOAuthAuthority } from './oauth/authority-do';
 
-export function createWorkerRuntime(env: Env): HttpRuntime | undefined {
-  const config = parseConfig({ ...env });
-  const tokenStore = initializeWorkerTokenStore(env, config);
-  if (!tokenStore) return undefined;
-  return buildHttpApp(config, {
-    runtimeName: 'cloudflare-workers',
-    tokenStore,
-    mountOAuthRoutes: true,
-  });
-}
-
-let runtime: HttpRuntime | undefined;
+/**
+ * Workers receive `env` with each request, so the app is built on the first request and
+ * reused for the isolate's lifetime. If that fails (bad configuration, or a registration
+ * mistake such as a duplicate tool name), it is logged once and every request gets a generic
+ * 500 until the next deploy; the details stay in Workers Logs, not in responses.
+ *
+ * Bindings (KV, D1, Durable Objects) reach your code through `runtime`, typed in
+ * `src/server.ts`. Export any Durable Object classes from this module, as Workers require.
+ */
+let app: App | undefined;
+let misconfigured = false;
 
 export default {
-  fetch(request, env) {
-    runtime ??= createWorkerRuntime(env);
-    if (!runtime) {
-      return Promise.resolve(
-        new Response('Server misconfigured: TOKENS binding unavailable', {
-          status: 503,
-        }),
-      );
+  async fetch(request, env) {
+    if (!app && !misconfigured) {
+      try {
+        const config = parseConfig({ ...env });
+        app = createApp(config, { runtime: workerRuntime(env, config) });
+      } catch (error) {
+        misconfigured = true;
+        const message =
+          error instanceof ConfigError ? 'Invalid configuration' : 'The server failed to start';
+        createLogger('error').error(`${message}; fix it and redeploy`, { error });
+      }
     }
-    return runtime.fetch(request);
+    return app
+      ? app.fetch(request)
+      : Response.json({ error: 'server_misconfigured' }, { status: 500 });
   },
 } satisfies ExportedHandler<Env>;
+
+/** Tokens in KV (`TOKENS`), authorization state in the `OAUTH_AUTHORITY` Durable Object. */
+function workerRuntime(env: Env, config: Config): Runtime {
+  const missing = (['TOKENS', 'OAUTH_AUTHORITY'] as const).filter((name) => !env[name]);
+  if (missing.length > 0) {
+    throw new ConfigError(missing.map((name) => `The ${name} binding is missing`));
+  }
+  const key = config.settings.RS_TOKENS_ENC_KEY;
+  return {
+    tokens: new KvTokenStore(env.TOKENS, {
+      encryptor: key ? createEncryptor(key) : undefined,
+      logger: createLogger(config.logLevel),
+    }),
+    authority: durableObjectAuthority(env.OAUTH_AUTHORITY),
+  };
+}

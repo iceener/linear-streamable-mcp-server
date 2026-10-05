@@ -3,32 +3,28 @@
  * Verifies: input validation, batch creation, dry run, error handling.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createIssuesTool } from '../../src/shared/tools/linear/create-issues.js';
-import type { ToolContext } from '../../src/shared/tools/types.js';
+import { beforeEach, describe, expect, it, type vi } from 'bun:test';
+import { createIssues } from '../../src/tools/create-issues';
 import createIssuesFixtures from '../fixtures/tool-inputs/create-issues.json';
 import {
   createMockLinearClient,
   type MockLinearClient,
   resetMockCalls,
-} from '../mocks/linear-client.js';
+} from '../mocks/linear-client';
+import { type CallerContext, type Rows, toolUnderTest } from './harness';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
 // ─────────────────────────────────────────────────────────────────────────────
 
 let mockClient: MockLinearClient;
+const createIssuesTool = toolUnderTest(createIssues, () => mockClient);
 
-const baseContext: ToolContext = {
+const baseContext: CallerContext = {
   sessionId: 'test-session',
   linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
-
-// Mock the getLinearClient function
-vi.mock('../../src/services/linear/client.js', () => ({
-  getLinearClient: vi.fn(() => Promise.resolve(mockClient)),
-}));
 
 beforeEach(() => {
   mockClient = createMockLinearClient();
@@ -231,14 +227,12 @@ describe('create_issues handler', () => {
     expect(result.isError).toBeFalsy(); // Batch continues
 
     const structured = result.structuredContent as Record<string, unknown>;
-    const results = structured.results as Array<Record<string, unknown>>;
+    const results = structured.results as Rows;
     const summary = structured.summary as { ok: number; failed: number };
 
     expect(summary.failed).toBe(1);
     expect(results[0].success).toBe(false);
-    expect((results[0].error as Record<string, unknown>).message).toContain(
-      'No user found',
-    );
+    expect((results[0].error as Record<string, unknown>).message).toContain('No user found');
     expect((results[0].error as Record<string, unknown>).code).toBe('USER_NOT_FOUND');
   });
 
@@ -306,7 +300,7 @@ describe('create_issues handler', () => {
     );
 
     const structured = result.structuredContent as Record<string, unknown>;
-    const results = structured.results as Array<Record<string, unknown>>;
+    const results = structured.results as Rows;
 
     expect(results.length).toBe(1);
     expect(results[0].ok).toBe(true);
@@ -333,7 +327,7 @@ describe('create_issues output shape', () => {
     expect(structured.summary).toBeDefined();
 
     // Results array
-    const results = structured.results as Array<Record<string, unknown>>;
+    const results = structured.results as Rows;
     expect(Array.isArray(results)).toBe(true);
 
     for (const r of results) {
@@ -371,15 +365,11 @@ describe('create_issues error handling', () => {
     expect(result.isError).toBeFalsy();
 
     const structured = result.structuredContent as Record<string, unknown>;
-    const results = structured.results as Array<Record<string, unknown>>;
+    const results = structured.results as Rows;
 
     expect(results[0].success).toBe(false);
-    expect((results[0].error as Record<string, unknown>).message).toContain(
-      'API rate limit',
-    );
-    expect((results[0].error as Record<string, unknown>).code).toBe(
-      'LINEAR_CREATE_ERROR',
-    );
+    expect((results[0].error as Record<string, unknown>).message).toContain('API rate limit');
+    expect((results[0].error as Record<string, unknown>).code).toBe('LINEAR_CREATE_ERROR');
   });
 
   it('continues batch on partial failure', async () => {
@@ -407,7 +397,7 @@ describe('create_issues error handling', () => {
     expect(summary.ok).toBe(1);
     expect(summary.failed).toBe(1);
 
-    const results = structured.results as Array<Record<string, unknown>>;
+    const results = structured.results as Rows;
     expect(results[0].ok).toBe(false);
     expect(results[1].ok).toBe(true);
   });

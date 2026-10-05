@@ -1,0 +1,114 @@
+{
+  "_note": "Written by the checkpoint code (2f723fd) through its HTTP routes: KvTokenStore with AES-GCM under the test-only key below, a FileOAuthAuthority client document and pending grant, and an encrypted FileTokenStore v1 file. `records.*.checkpointMcp` is how the checkpoint answered an MCP initialize with that access token (OAUTH_REQUIRED_SCOPES=\"read write\"). Script: linear-mcp-evidence/record-storage.ts.",
+  "recordedAt": "2026-10-05T14:46:03.300Z",
+  "key": "KysrKysrKysrKysrKysrKysrKysrKysrKysrKysrKys",
+  "clientId": "ClWa-cDVqU3haJeyubx0KDTbaSNKO5r4",
+  "records": {
+    "spaced": {
+      "note": "Linear answers scope \"read write\"",
+      "accessToken": "p_AvEg2qJWQ9yDbvwrqpi-684FpPV9S8",
+      "refreshToken": "B51rCt8txqDYnLzTTJpfubzDemOApyRx",
+      "tokenResponseScope": "read write",
+      "storedScopes": ["read", "write"],
+      "checkpointMcp": {
+        "status": 200,
+        "challenge": null
+      }
+    },
+    "array": {
+      "note": "Linear answers scope [\"read\",\"write\"]; the checkpoint stores [\"read,write\"]",
+      "accessToken": "86xVCGX3cKF53q3AspywgSofz3aKQG99",
+      "refreshToken": "hAejNrFOKpIj5jhaALleV05xDql2oLW4",
+      "tokenResponseScope": "read,write",
+      "storedScopes": ["read,write"],
+      "checkpointMcp": {
+        "status": 403,
+        "challenge": "insufficient_scope"
+      }
+    },
+    "comma": {
+      "note": "Linear answers scope \"read,write\"; the checkpoint stores [\"read,write\"]",
+      "accessToken": "bJ2mM7vjsG4K9Kqnl5NWU1ggLvNJHrBa",
+      "refreshToken": "-w7DYlBSXCdCTOjY2w16sZf4xtNlMt0e",
+      "tokenResponseScope": "read,write",
+      "storedScopes": ["read,write"],
+      "checkpointMcp": {
+        "status": 403,
+        "challenge": "insufficient_scope"
+      }
+    },
+    "unscoped": {
+      "note": "Linear answers no scope; the checkpoint stores []",
+      "accessToken": "h00ypYiZNrRe7I-aakzeH91sLfblhKbv",
+      "refreshToken": "14AlDPeMWqdZp6DLlGMEWZ965UkKbRxs",
+      "tokenResponseScope": "",
+      "storedScopes": [],
+      "checkpointMcp": {
+        "status": 403,
+        "challenge": "insufficient_scope"
+      }
+    },
+    "expiring": {
+      "note": "a 24-hour Linear token with a refresh token, issued 30 s before expiry; never used",
+      "accessToken": "q_5VyG_V08mShk4hIm8KVYIIvQrjk12i",
+      "refreshToken": "dB8fjGfaQbZLNAbOiRRyGaZJlq1TGHo8",
+      "tokenResponseScope": "read write",
+      "storedScopes": ["read", "write"],
+      "checkpointMcp": "not used"
+    },
+    "refreshed": {
+      "note": "like \"expiring\", then used once: the checkpoint verifier refreshed it at Linear, whose answer named no scope, and stored scopes []",
+      "accessToken": "_XcGioIWYoo1vFQPMkAREWJWcOQo3TxG",
+      "refreshToken": "AIldxApVjgi-u0ZWqA5UEZ3WNfYY6Yoe",
+      "tokenResponseScope": "read write",
+      "storedScopes": [],
+      "checkpointMcp": {
+        "first": {
+          "status": 403,
+          "challenge": "insufficient_scope"
+        },
+        "afterRefresh": {
+          "status": 403,
+          "challenge": "insufficient_scope"
+        }
+      }
+    },
+    "missing": {
+      "note": "provider tokens without a scopes field, written with the checkpoint KvTokenStore",
+      "accessToken": "missing-rs-access",
+      "refreshToken": "missing-rs-refresh",
+      "storedScopes": null,
+      "checkpointMcp": {
+        "status": 403,
+        "challenge": "insufficient_scope"
+      }
+    }
+  },
+  "refreshAtLinear": [
+    {
+      "grant_type": "refresh_token",
+      "refresh_token": "linear-refresh-before"
+    }
+  ],
+  "kv": {
+    "rs:access:_XcGioIWYoo1vFQPMkAREWJWcOQo3TxG": "IPRNyoq093SGLW2i78vMerNNDrpLLKrMMUmOQ9E4lkxIfBIrVY79k3qIpIdNhex10gTMNlQAX1LQr3Nf2nM1BXQCkvGp8BNqjPKOxWWm_qJZgT8ml754rmHma6wzzDrfUAGqlU7AjU5T__p6rP_TloweNGZ5ipy6RY69X_XUMlhFZIBu2lTgGwCm1Z0Bqxlwstn_AYyBIutcSFexR2cT4dXyjEcRgOaor2oU9YDxySjJxzq8N-aw0pkj78D2JYAyFuyYoNO_9KzS-SkPZrjfta9G54prsypFNme5uc_UcsbI_qdyo87GFwyQa2pjO1xpLtgVlSJKIsVgu3osVEzoccFU4ZXCaqBFDdxq8KOLDaWP_bhJZMLptVk9hhKAsQ_CN7lP2Dcowa_V",
+    "rs:access:86xVCGX3cKF53q3AspywgSofz3aKQG99": "Cog3_et61YpR0KO-_KJDWrXEFZdg1XE7DR39gGJtNZ1lnsj2ia241gqLw4O8KFHMBREILGqzU-z1pwbPDLdAQvNBDasciZiaQ4Qd8olCxI3C34Z0u0CAe3F9bIpSEyWGv6Mllm6wHROKtw6vqN2oe4JP4xNnoLNp5a4B5GAnHFFTJlLwVkFa-wMLkcxK9E7txNfxlB-6kifoD5wXrtFXwgw9s_iaqn-nUFFLZ5Ao8y4MjydHWSCjNeuZEPTw7QhezOz7zdcDxV1IShCbhRLMMlpJ5yXNDt7C-NMxooZ6pYgtoHykLND0U5KGEg9dMDxfYtWAspl8dtYJRwCoSU72OEdq6bTiI7V8",
+    "rs:access:bJ2mM7vjsG4K9Kqnl5NWU1ggLvNJHrBa": "Up-_arRkYe6JUAXv8njn0zzbvayYZBls3YtizgiYGAjbe_8rYiF7hSqdRBi2AHlzIOg4hvPR9FWk21OzIodulcvEe0ISIjHPSv5woh0rR6fCG4en7iMuQAs8buxFA-cWnayhPoH2YUjccanUGGgvBnk34kEmjhucFYmcVoN5DRgZHMP4WX7kjnFQ_ftADhvoeOEsJofqh9tkn-czKFKfZ6I8EKB9FcGcEutTWegqGkriRnIST15fIc6GNJGa1mCTDkrwxIu0JqFv8s9yKGjHC8wC7j8ALPDgmxPaSdOcTfTArVHhWvTHH1kJSnZKI4vVsyTevqr5iyhx37HEKdvhfbDAkZhatgFN",
+    "rs:access:h00ypYiZNrRe7I-aakzeH91sLfblhKbv": "A5NWD4uVjwPu7tPeC6I_RDIlazWh_9TuvnroilC-F378wtlcacWnI7lldECMZtGh7w9XpyiN3rvFnf0VxtDw_Cww-smNQh2-2dOYm0tYnSpwGw_hcQ9E3qd8ZYiUDIp6li5-xjSC46e53D7ihf8rxHqJ2ddi0NUk8kLytwO8npKfyWTXY2MhgimtHfvcTIDVhP8lVTkQcssx8aIuniyW08nwqfJ7_eLOIKMuYVCHhXiSxvDRqIqjY5PAxk8jjyvNjeOjYjUbdrUUJ3DH1F2pmHsy3jySBJFV0T83DPIABEEGLIXIiv5vOFzmL-2k1iP6ye32fHnnsCxtlgu8aV0p",
+    "rs:access:HeOoHPK8qbzB4lEHvTsLDDOPRNQVXZCp": "rauhCmFKUfmXe2YZNZnWwQh_r9w7dCVHa60ZO69KazgjX1htV-mQrakYqof3BydUkvMCHSbpwhYLXYpbnEG5EuRbkj0qp32-n-UdQSvE-WjZwsp9sllN2G-08BvC8BaRv1higgzWs7nubshAm_VnQ6qH5l-P8jmhw2jaL_8XPb9v_d5LzwiCWoXkp1sqUJU5KXVRHz-FiTH8kgtWb86Ah-YrdGeFNlifX1DyeFU7SgBGN-si5U2tfTcE0XlpPptBklP5GU_0gUXkO-AwHVSj4_UgOSHcs6cMjoiAcknicYeqe3GR1iF31gxJZqmywl7awWKqoWDZgjGMR361xUYPVtHkALTA76pLo9w",
+    "rs:access:missing-rs-access": "V5HSh_o2s8J5Mb6LqabpiawOJVuKI_iqxoitxRzcwjSjvA17YCvlnGWwEZvSRmlvDMYzRcwXA95buJa5YKUvbdHBByLs3eqQXlD-pjvA1-7gd21CIxR2t7ZFLqUUhrykHB6965vFPHfulGBfGi1r7p79vhNSmFCZTesoXMScyvJbdURGxwBYcQD-eh9fISQtuw4q1zrq2bmUDW1Dhko0haRWQorEpDKtvdfzJOdxzxSn18Gp_l9S636QrixW_3x1NyzeTNwbwqHa4h8wL0ieqBiE-p8zHxQCf4xjzV8jQMUuh1J56hA-X36WICxVjqtoS39IJ9drTjPgSNg0Qkc",
+    "rs:access:p_AvEg2qJWQ9yDbvwrqpi-684FpPV9S8": "O3T5vSWxnagjdKgIrWgpDoSURgfEEO8fUM0Z_ECNXUPMVUW1DslIhuGLIBp6r7-GEGIODs9XpDlQtyxUi8nvLignVlyIJ4int2prR0T1zJybyi8gl3q19VwvEzEdt07l2QnUNPihDHnFcXnR6gNLx28b5dm8jYZNxbTe-GIqLPOSSeH52_KIR6Mvn755tGIp9dgXtxfchn5nGZ18xfBBXL1fImM-hK0o46kLr3Gb-oGSDzT92xomj7dCyNYChD3NA-Sp6TUhvB6mzjQjxwDIXr8s-bO63_PZmGoFgPno3A9aWeLxDnhl9oiGSln8yXXLYYtVIb3v4NYq4LDuRsl4SLnSYn1zIAEF5ne6",
+    "rs:access:q_5VyG_V08mShk4hIm8KVYIIvQrjk12i": "JawCtNQ2aAtXau63-7sb-T5HycjX1CBGqvAXjAggSWWMqsAqV7Qszu957kd3MBIzWjBfM0IXzr48OKCD7bsoK6UOW3iCUBzk0L7GBOEhsbyyFlCslkdJ97xx4NHt6zdZ472CJaDixirXku8Iwmpsc8zyCrvBlX74MMzV_co4wwQYPBBDIsqycr9g_GDQ4d2KIVMl0j2FeiOpcTRlElcJZpCeJJA1IZwYSA6mNqV4zC4JHStL6LNPELmiV86P_E2ea_uCUvV9pCk6Yetae8C60TAaXk_eE1uvk4Sr9Ntu_YmLy96jw5EX7RBfcZvQ0LZGHSlJcTex6s0g9is3EdPjqlO0bH6yv_jU47fgX6gc922vqIkjoukTrdMaphQMxizRHQ1j4z0vhBqD-XJyFz1kFi9Bomhk1xI",
+    "rs:refresh:-w7DYlBSXCdCTOjY2w16sZf4xtNlMt0e": "zrTw5uT21ZMrbStzoVChzU-AfFEzknJsWZxEmEHEBl--4v-2m_uUc1XWXnP5790ibnOwalHzHBjTHgf-VcQLhGteMUaVnePPR_oT-BlUgGuXa0OReIXRxDkM-cIcsuxa5mk3Kcupm5p6EIGHWl4Th8KgYUO2_yWxLc5o4L2iZGkfamdXl8E4Y7rAGRMQAqoL7ltKGXzTbshJ31mNsD2fUFuWfyEMzywZQuevC7jl0-V1EBwON8aowN01-xHyQZYVUh-I0nr6chi_4eKMPYweUlFoDhq7r-M37SR0SY2qPWnpaPNyCaOPQ6xeGJT8sFILyWnFFVAQgQtveeL2Ck-milwK4DzjaE8y",
+    "rs:refresh:14AlDPeMWqdZp6DLlGMEWZ965UkKbRxs": "Ijl_eFAuNNBm-nGmxB4ItGHYWO-TxhCJtRckPgrLQeyzokroU4H5uHEnbac21wwgJWRDAC2ZMkoujoqpR5ex0jHG-OfqRZ25H5TXd2bDQ7p8vf5Nlv6y7JJu5r14-3EYREGBiimVp5G0j-ecit0XiZAFDshQxP5xbCE6i8l3dJ5Qj1x4oNE5U0QJAQIwcBHtwyhkqrZDr1b2fzm7fVTjzi8DOB_BDmgbeJXjz3qEgzCrbhCaLSN0zONZfFFsJaExMJzPXEwvlrKn9f468dx0OmdMv48z0_B03AGySWEAssvJvURCbgkr2jCp6CiNsWIPB8Ebd-ZE2CNsx-lFmFSM",
+    "rs:refresh:AIldxApVjgi-u0ZWqA5UEZ3WNfYY6Yoe": "wM-9aunHJPI_JAd9UhEZ1FYSnmn6tmxwCiP9fANBhsj8kFxmfTBFSefunys29yEEsphSA9EUkpWHWJXwTBxEqDmZYglkJc6MXnuO9-oqjcreVxteQlW-mkntpaSENvOnSqPo2-ov7ykrXBhqR0j1cSnSc1xQ7G72UEZNjLrlt9zyeEVQOW_pKBcAPq7I4B_Mm2K26Vpc1yPeyaRvldXDfNUNKTx1LSxKZgVaguvyHSqw1UVOQ70rO49XxlRzxjWYboSpmFWsLRxJw4mTMCR0A9xleQ4Ybu2Fzh6dFLwX3ZEdgC3W56apSlmJPvW4dLxPG0J9oMH-_Zyu0KWpqf8AM_fpL3sNOZmw7yiXBDzSaakdH_V7mHc7WuCwuNaMBsm_iibQEZ2rqves",
+    "rs:refresh:B51rCt8txqDYnLzTTJpfubzDemOApyRx": "iIqDhCXyjfp5cTumxwPZdDKpq-pngt8aHN1sMtdQ6SnLytnyUDQagYovVEo8t1BgmbJlSJeOzWpNi4Ieox9-_bJP8_zvcMpgoUAvPdv_PNtlqeo2MqEUnyQvtLPUYaoHovHJPv_Q0CRaUGEtX-pYXbXJbZSP1xhhyjlVKnA9uy1z0UTizn4lgPWFGNdCqhVLn2oLPTeNONhRHXJGw8EsuFbVnnfH1Vif-CzjUMEmfno_4iF5WjvfkQqW4m9LmqzhwXdv03v2mCMcBE18LO48AIdINqoZ7jF1NJNj71fQf7l4xZFiFFPhg8VpS0dQnFTs3cIsCLT2WlqIiQf5NsU78_xScMf0MDLWqM2x",
+    "rs:refresh:dB8fjGfaQbZLNAbOiRRyGaZJlq1TGHo8": "HgI6rPSY24kJWjHSpZ50iMByawzB8O-x89bYL68CffHkTXW6QuS6V9uEoO8vjo1oFjny53l9h6T2WT6oTQBh_7KxR2ezEvxgCw18IDKM-tDp89uWasSr2qyJqkb7DfTUXY7wBJCeC0b63MO2Tj38uMEcnz2uwE42WpqeTBP9LJFAy-yf1o8i21Ro90-a0mcYn0hdbyk_ndg8R2yWFQ7nLNxeUbeS8qD42Umq2tm2CywOEtgQymEoJL7MjlCJFJ6U4wih0I5-QDfheRy5HCiiEFKm3PoOpHHTQETliBcGNRdrgh6vY_UTKJIZlUgRKzuO2vo3W-O9NuKfi5xBGKVbkJCk9FRie5JJN1HYbvkYDrqRZZeYG9pw7t2QxkUnY_OxwPry-B-8fNc1cO08CzcaweIzzZMo2BA",
+    "rs:refresh:hAejNrFOKpIj5jhaALleV05xDql2oLW4": "-EWx1IKUAw_vibc3dc3hlsdriqURaLga7wTA-FIP7NyXs5PWVDRvGaMk2hRi3xx4YrOmGhknQNvVfs7oYNXYW5gAnIqd04ZVQrRVnKhLDDqu6TePrFsLhToeNeqh9A6Ls5s_TuK8XJxHQRT7wcf0s_Gm1IPzSUys7WrWgZSrzRLIkS8L03yQCmbmsBXGf43Q9UTQaJetPmz0iQWRbwqPVonaBDS0pLuTmPn74A0JoZa4k8Ndf_yH9k_4DRWXgkNmiVy2xmKWUEkyQh2G2SPdBum2M8dfVLF3MMsfkJsKc9UlYXu-tTnD5gExf475aqZpy2qvt0PdIBs1IqQimm-UTzYMvM1dVbcF",
+    "rs:refresh:missing-rs-refresh": "rl7h_4N8KCN-nWfzDnC3c2d0zYpknqiWhqix1IR7LdlhBAGfoOHWPj8Y8xGNifaBLQOCIafJcB_WBWUnGXuAuUrYL2Bbh865BSi0lN8NkofZB6taS93tXLJdLB7_pji8ldIcrmq6wumLOx1GhePMICdH3apFcwEGV1gwotcEVgSWtx07wLDE1gsz53OgqYFAbte0O1O3q90I_FySbaaMIZJ_Qc4lyszs5XduKieDrf0I0QCgdno0XkNyoXBKKvVg5gd2Jj5khrlulobDFTEBnKJ9osTkA6wFnh-iCNljmal64rtIL2Tbc_l3ba_hZHQ_s11tvoxggsTD5v6k_Xg",
+    "rs:refresh:W9vnMBa83sKogQvWXH0_jH-z5hlN3YYR": "4EdMVvUqAulPQd8MrNaIhJd4Q3ruVSurjkVZm178izmF6YQIkB6LJha3HKoQBenIHSZhuRsC4m-2VQfb6Ue8txNnOMO2yUuBjsNzhl9RRwE7h4BIIgaMuK5P-XMSYApD1L-WomeOPEEzSdrOJ-0v0gZzLcjQV1R4eJoAxzaJgOX1D-hPej8N1T1u0S_UH1W7LPzbaEFCUuyZJba50DQINVNn8zOUazj2ISlJQQHdO72VI218_BOwAiXjwVkztubi0RfZAoLO9QvMmdIWgwXwqTDtrrXvkNJcpURMCzbMkHUXX1rUXhW1SuolBI_KEeO_7acyjZHxSRcInTQInS7al-DEyW3D63j9k5A"
+  },
+  "file": "qBxtHPuWT12cs8KvhMtIqGUinKk4QeW6i6sLmwj2YOZB6DMo3b9sGgArTkTJxBK5igFBuwqwKwf0SogQ4FTVKszO7AUAzGZJELVljMKjhWbmQpaDCwht2oc1WsnWeAozcQ-nxhDd3O-yjIxiKzGTnoZVMg3RdlgT_5Zbhl_9HpApJnHZqklsdLrEdKXwH8f6oS0C_b8UB73YsGf9Mn5NraPE4flE0AT5BYH6_NP7pQY6hVEiwKVN4rjVN1JpwPV5rXxyKLW1jYpN7HTVZ4dwVbrrbPd5qi_pYH8jcKcFaNEDiW4SWj2muqnf9-pwDEZ2kilQArDCTHSpxnolo3zDL0NSoC_6Kt2fDflgPA1zNYsCoo45CNZONkqxy5xZ5eSRhkcDcVqED62ksNWWZFDgzA-eKEmoH1O71MPARm93d1V2WZGQgdWP8y3xsZ1u5-ccQaAE_2dK_J5JpCvIQWRi1na36hgoo28SxE8tffXS9BDKxvWj3qYdMvn1n3z4zbEpFF_U3dnda9Hnc5W9UOgMG431hQL_I7p2WnWoLJWhcCZ6XUWKYnsdsVtsjSsLuVii2fFQMwTaQPYCXr7BrsEOC75D1T6rQKwsctxd5QxMQewFSb4xdlCDkMGX4pQBxCsarQ",
+  "grantProviderMaterial": "enc:qjxEpIFjmHUKtdyjRNOYUQqYE6-4LSY_LnvLO463FuYG002_gkMZwfsS4dql23I04t3e5H3Y1-8dl5Ru6sbWnOxBLMyYMNPBTpUorT8bVBJLZLKCi__LpO-3msfRedOeWfhP83Rs32_8opH8RBblrgI0sjWMekM",
+  "authorityDocument": "{\"transactions\":{},\"codes\":{},\"client\":{\"application_type\":\"native\",\"token_endpoint_auth_method\":\"none\",\"redirect_uris\":[\"http://127.0.0.1:43210/oauth/callback\"],\"grant_types\":[\"authorization_code\",\"refresh_token\"],\"response_types\":[\"code\"],\"client_id\":\"ClWa-cDVqU3haJeyubx0KDTbaSNKO5r4\",\"client_id_issued_at\":1791211563}}"
+}

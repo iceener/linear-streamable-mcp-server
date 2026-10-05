@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/server';
+import type { Definition } from '../platform/primitives';
 
-/** The pre-migration Linear contract does not expose prompts. */
-export function registerPrompts(_server: McpServer): void {}
+/** Every prompt. The server has none; add yours here. */
+export const prompts: Definition[] = [];

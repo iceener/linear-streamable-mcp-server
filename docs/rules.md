@@ -6,7 +6,7 @@ This guide documents the interface decisions behind the Linear MCP tools: schema
 
 Goal: an LLM can use the tools correctly **without knowing Linear’s API** (or reading external docs). The tool surface must be self-explanatory at the point of use.
 
-- **Centralized descriptions**: Tool `name/title/description` live in `src/config/metadata.ts`, not scattered across implementations. This keeps instructions consistent and makes “prompt quality” easy to iterate on.
+- **Descriptions next to the code**: Each tool's `name`, `title` and `description` are in its own file in `src/tools/`, and the server `instructions` are in `src/server.ts`. `tests/contract.test.ts` pins the published text, so a change to it is deliberate.
 - **Schema-level documentation**: Zod `.describe()` is used to explain *what a field means*, *where its value comes from*, and *how to recover when it’s missing* (e.g., “use workspace_metadata to find IDs”). This is especially important for non-obvious inputs like `cursor`, `matchMode`, `assignedToMe`, `includeArchived`, `parallel`, and `dry_run`.
 - **Closed-loop discoverability**: If a field expects an ID, the schema should point to the tool that can produce it (typically `workspace_metadata` or a `list_*` tool), so the agent can always get unstuck.
 
@@ -55,6 +55,7 @@ Errors are part of the interface. They must be recoverable without manual diggin
 - **Actionable hints**: Errors map to an `ErrorCode` and come with a next-step hint (e.g., `NOT_FOUND` → “use workspace_metadata or list tools to find valid IDs”).
 - **Concrete suggestions**: Error payloads include `suggestions[]` whenever the tool can propose fixes (valid values, similar names, follow-up tools).
 - **Validation that teaches**: For invalid filters or inputs, the error message should explain *what was wrong* and show an example of the correct shape.
+- **Provider errors stay readable**: A failure that Linear reports reaches the model as `Tool error: <Linear's message>` (`withLinear` in `src/tools/shared/linear.ts`). Anything else thrown is a bug: the template's error policy logs it and the model gets a reference only.
 
 ## 7. Production-Grade Tooling (Reliability Under Agent Load)
 

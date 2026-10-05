@@ -3,32 +3,28 @@
  * Verifies: input validation, filtering, pagination, output shape.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { listIssuesTool } from '../../src/shared/tools/linear/list-issues.js';
-import type { ToolContext } from '../../src/shared/tools/types.js';
+import { beforeEach, describe, expect, it } from 'bun:test';
+import { listIssues } from '../../src/tools/list-issues';
 import listIssuesFixtures from '../fixtures/tool-inputs/list-issues.json';
 import {
   createMockLinearClient,
   type MockLinearClient,
   resetMockCalls,
-} from '../mocks/linear-client.js';
+} from '../mocks/linear-client';
+import { type CallerContext, type Rows, toolUnderTest } from './harness';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
 // ─────────────────────────────────────────────────────────────────────────────
 
 let mockClient: MockLinearClient;
+const listIssuesTool = toolUnderTest(listIssues, () => mockClient);
 
-const baseContext: ToolContext = {
+const baseContext: CallerContext = {
   sessionId: 'test-session',
   linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
-
-// Mock the getLinearClient function
-vi.mock('../../src/services/linear/client.js', () => ({
-  getLinearClient: vi.fn(() => Promise.resolve(mockClient)),
-}));
 
 beforeEach(() => {
   mockClient = createMockLinearClient();
@@ -100,7 +96,7 @@ describe('list_issues handler', () => {
     expect(structured.items).toBeDefined();
     expect(Array.isArray(structured.items)).toBe(true);
 
-    const items = structured.items as Array<Record<string, unknown>>;
+    const items = structured.items as Rows;
     expect(items.length).toBeGreaterThan(0);
   });
 
@@ -108,7 +104,6 @@ describe('list_issues handler', () => {
     const result = await listIssuesTool.handler({ limit: 2 }, baseContext);
 
     expect(result.isError).toBeFalsy();
-    const structured = result.structuredContent as Record<string, unknown>;
 
     // Verify rawRequest was called with correct limit
     expect(mockClient._calls.rawRequest.length).toBe(1);
@@ -128,10 +123,7 @@ describe('list_issues handler', () => {
   });
 
   it('passes projectId as filter', async () => {
-    const result = await listIssuesTool.handler(
-      { projectId: 'project-001' },
-      baseContext,
-    );
+    const result = await listIssuesTool.handler({ projectId: 'project-001' }, baseContext);
 
     expect(result.isError).toBeFalsy();
 
@@ -150,23 +142,20 @@ describe('list_issues handler', () => {
 
     // Default matchMode=all requires every keyword.
     expect(filter.and).toBeDefined();
-    const andFilters = filter.and as Array<Record<string, unknown>>;
+    const andFilters = filter.and as Rows;
     expect(andFilters.length).toBe(2);
     expect(andFilters).toContainEqual({ title: { containsIgnoreCase: 'auth' } });
     expect(andFilters).toContainEqual({ title: { containsIgnoreCase: 'bug' } });
   });
 
   it('uses explicit keywords array', async () => {
-    const result = await listIssuesTool.handler(
-      { keywords: ['fix', 'auth'] },
-      baseContext,
-    );
+    const result = await listIssuesTool.handler({ keywords: ['fix', 'auth'] }, baseContext);
 
     expect(result.isError).toBeFalsy();
 
     const call = mockClient._calls.rawRequest[0];
     const filter = call.variables?.filter as Record<string, unknown>;
-    const andFilters = filter.and as Array<Record<string, unknown>>;
+    const andFilters = filter.and as Rows;
 
     expect(andFilters).toContainEqual({ title: { containsIgnoreCase: 'fix' } });
     expect(andFilters).toContainEqual({ title: { containsIgnoreCase: 'auth' } });
@@ -243,7 +232,7 @@ describe('list_issues output shape', () => {
     const result = await listIssuesTool.handler({}, baseContext);
 
     const structured = result.structuredContent as Record<string, unknown>;
-    const items = structured.items as Array<Record<string, unknown>>;
+    const items = structured.items as Rows;
 
     for (const item of items) {
       // Required fields
@@ -280,7 +269,7 @@ describe('list_issues output shape', () => {
 
     // Text should include actual issue data from mock
     const structured = result.structuredContent as Record<string, unknown>;
-    const items = structured.items as Array<Record<string, unknown>>;
+    const items = structured.items as Rows;
 
     // If we have issues, text should reflect the count
     if (items.length > 0) {
@@ -308,7 +297,7 @@ describe('list_issues edge cases', () => {
 
     expect(result.isError).toBeFalsy();
     const structured = result.structuredContent as Record<string, unknown>;
-    const items = structured.items as Array<Record<string, unknown>>;
+    const items = structured.items as Rows;
 
     expect(items.length).toBe(0);
   });

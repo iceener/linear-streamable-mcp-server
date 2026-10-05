@@ -3,34 +3,31 @@
  * Verifies: project listing, creation, updates, filtering, output shapes.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  createProjectsTool,
-  listProjectsTool,
-  updateProjectsTool,
-} from '../../src/shared/tools/linear/projects.js';
-import type { ToolContext } from '../../src/shared/tools/types.js';
+import { beforeEach, describe, expect, it } from 'bun:test';
+import { createProjects } from '../../src/tools/create-projects';
+import { listProjects } from '../../src/tools/list-projects';
+import { updateProjects } from '../../src/tools/update-projects';
 import {
   createMockLinearClient,
   type MockLinearClient,
   resetMockCalls,
-} from '../mocks/linear-client.js';
+} from '../mocks/linear-client';
+import { type CallerContext, type Rows, toolUnderTest } from './harness';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
 // ─────────────────────────────────────────────────────────────────────────────
 
 let mockClient: MockLinearClient;
+const createProjectsTool = toolUnderTest(createProjects, () => mockClient);
+const listProjectsTool = toolUnderTest(listProjects, () => mockClient);
+const updateProjectsTool = toolUnderTest(updateProjects, () => mockClient);
 
-const baseContext: ToolContext = {
+const baseContext: CallerContext = {
   sessionId: 'test-session',
   linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
-
-vi.mock('../../src/services/linear/client.js', () => ({
-  getLinearClient: vi.fn(() => Promise.resolve(mockClient)),
-}));
 
 beforeEach(() => {
   mockClient = createMockLinearClient();
@@ -115,10 +112,7 @@ describe('list_projects tool', () => {
     });
 
     it('supports includeArchived option', async () => {
-      const result = await listProjectsTool.handler(
-        { includeArchived: true },
-        baseContext,
-      );
+      const result = await listProjectsTool.handler({ includeArchived: true }, baseContext);
 
       expect(result.isError).toBeFalsy();
     });
@@ -131,10 +125,7 @@ describe('list_projects tool', () => {
     });
 
     it('supports pagination with cursor', async () => {
-      const result = await listProjectsTool.handler(
-        { cursor: 'test-cursor' },
-        baseContext,
-      );
+      const result = await listProjectsTool.handler({ cursor: 'test-cursor' }, baseContext);
 
       expect(result.isError).toBeFalsy();
 
@@ -148,7 +139,7 @@ describe('list_projects tool', () => {
       const result = await listProjectsTool.handler({}, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
 
       for (const item of items) {
         expect(item.id).toBeDefined();
@@ -161,12 +152,10 @@ describe('list_projects tool', () => {
       const result = await listProjectsTool.handler({}, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
 
       // At least one project should have metadata
-      const hasMetadata = items.some(
-        (p) => p.leadId !== undefined || p.teamId !== undefined,
-      );
+      const hasMetadata = items.some((p) => p.leadId !== undefined || p.teamId !== undefined);
       expect(hasMetadata).toBe(true);
     });
   });
@@ -292,7 +281,7 @@ describe('create_projects tool', () => {
       );
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const results = structured.results as Array<Record<string, unknown>>;
+      const results = structured.results as Rows;
 
       expect(results[0].ok).toBe(true);
       expect(results[0].id).toBeDefined();
@@ -461,7 +450,7 @@ describe('projects common workflows', () => {
     expect(result.isError).toBeFalsy();
 
     const structured = result.structuredContent as Record<string, unknown>;
-    const items = structured.items as Array<Record<string, unknown>>;
+    const items = structured.items as Rows;
 
     expect(items.length).toBeLessThanOrEqual(1);
     expect(structured.limit).toBe(1);

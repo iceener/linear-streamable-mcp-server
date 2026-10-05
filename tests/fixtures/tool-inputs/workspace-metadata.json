@@ -38,14 +38,7 @@
     {
       "name": "full_bootstrap",
       "input": {
-        "include": [
-          "profile",
-          "teams",
-          "workflow_states",
-          "labels",
-          "projects",
-          "favorites"
-        ],
+        "include": ["profile", "teams", "workflow_states", "labels", "projects", "favorites"],
         "project_limit": 10,
         "label_limit": 50
       },

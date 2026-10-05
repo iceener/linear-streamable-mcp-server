@@ -124,9 +124,7 @@
     {
       "name": "invalid_priority",
       "input": {
-        "items": [
-          { "teamId": "team-eng", "title": "Test", "priority": "INVALID_VALUE" }
-        ]
+        "items": [{ "teamId": "team-eng", "title": "Test", "priority": "INVALID_VALUE" }]
       },
       "expectedError": "Invalid"
     }

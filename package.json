@@ -1,61 +1,42 @@
 {
   "name": "linear-mcp",
-  "version": "1.0.0",
-  "description": "Linear MCP Server with Streamable HTTP and OAuth2.1 support",
-  "main": "dist/index.js",
+  "private": true,
+  "description": "Linear MCP server for Bun and Cloudflare Workers, with an OAuth proxy in front of Linear",
+  "license": "MIT",
   "type": "module",
+  "packageManager": "bun@1.4.0",
+  "engines": {
+    "bun": ">=1.4.0",
+    "node": ">=22.18.0"
+  },
   "scripts": {
-    "dev": "bun --watch src/index.ts",
-    "dev:worker": "wrangler dev --config wrangler.jsonc",
-    "start": "bun run src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target bun",
-    "build:worker": "wrangler deploy --config wrangler.jsonc --dry-run --outdir dist/worker",
-    "deploy": "wrangler deploy --config wrangler.jsonc",
-    "deploy:tail": "wrangler tail --config wrangler.jsonc",
-    "kv:create": "wrangler kv namespace create TOKENS",
+    "dev": "bun --watch src/bun.ts",
+    "dev:worker": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false wrangler dev",
+    "start": "bun src/bun.ts",
+    "deploy": "wrangler deploy --config wrangler.production.jsonc",
+    "check": "bun run typecheck && bun run lint && bun test && bun run types:worker:check",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "format": "biome format --write .",
-    "format:check": "biome format .",
-    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
-    "types:worker": "wrangler types --config wrangler.jsonc",
-    "types:worker:check": "wrangler types --config wrangler.jsonc --check",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "test:protocol": "vitest run tests/protocol.test.ts",
-    "test:workerd-client": "bun run tests/workerd-client.ts",
-    "test:workerd": "bun run tests/workerd-smoke.ts",
-    "test:integration": "RUN_LINEAR_LIVE_TESTS=true vitest run tests/integration/live-api.test.ts"
+    "test": "bun test",
+    "test:smoke": "bun scripts/smoke-bun.ts && node --disable-warning=ExperimentalWarning scripts/smoke-worker.ts",
+    "test:live": "RUN_LINEAR_LIVE_TESTS=true bun test tests/live/",
+    "types:worker": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false WRANGLER_HIDE_BANNER=true wrangler types --strict-vars=false",
+    "types:worker:check": "CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false WRANGLER_HIDE_BANNER=true wrangler types --strict-vars=false --check",
+    "inspector": "npx -y @modelcontextprotocol/inspector@2.8.0"
   },
-  "keywords": [
-    "mcp",
-    "model-context-protocol",
-    "linear",
-    "streamable-http",
-    "oauth2",
-    "server"
-  ],
-  "author": "",
-  "license": "MIT",
   "dependencies": {
-    "@linear/sdk": "^55.2.1",
-    "@modelcontextprotocol/server": "2.0.0-beta.5",
-    "hono": "^4.11.7",
-    "zod": "4.4.3"
+    "@linear/sdk": "55.2.1",
+    "@modelcontextprotocol/server": "2.3.0",
+    "hono": "4.13.9",
+    "jose": "6.2.12",
+    "zod": "4.6.5"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.3.14",
-    "@cloudflare/workers-types": "^5.20260727.1",
-    "@modelcontextprotocol/client": "2.0.0-beta.5",
-    "@types/node": "^24.10.0",
-    "bun-types": "latest",
-    "typescript": "^5.9.3",
-    "vitest": "^3.2.4",
-    "wrangler": "^4.114.0"
-  },
-  "engines": {
-    "bun": ">=1.2.0",
-    "node": ">=20.0.0"
+    "@biomejs/biome": "2.5.14",
+    "@modelcontextprotocol/client": "2.3.0",
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2",
+    "wrangler": "4.142.0"
   }
 }

@@ -1,0 +1,72 @@
+export function summarizeList(params: {
+  subject: string;
+  count: number;
+  limit?: number | undefined;
+  nextCursor?: string | undefined;
+  filterHints?: string[] | undefined;
+  previewLines?: string[] | undefined;
+  zeroReasonHints?: string[] | undefined;
+  nextSteps?: string[] | undefined;
+}): string {
+  const bits: string[] = [];
+  const header = `${params.subject}: ${params.count}${
+    typeof params.limit === 'number' ? ` (limit ${params.limit})` : ''
+  }${params.nextCursor ? ', more available' : ''}.`;
+  bits.push(header);
+  if (params.filterHints?.length) {
+    bits.push(`Filter: ${params.filterHints.join('; ')}.`);
+  }
+  if (params.previewLines?.length) {
+    bits.push(`Preview:\n${params.previewLines.map((l) => `- ${l}`).join('\n')}`);
+  }
+  if (!params.count && params.zeroReasonHints?.length) {
+    bits.push(`No results. Try: ${params.zeroReasonHints.join('; ')}.`);
+  }
+  const next = params.nextSteps?.length
+    ? `Suggested next steps: ${params.nextSteps.join(' ')}`
+    : params.nextCursor
+      ? `Suggested next steps: pass cursor '${params.nextCursor}' to fetch the next page.`
+      : undefined;
+  if (next) {
+    bits.push(next);
+  }
+  return bits.join(' ');
+}
+
+export function summarizeBatch(params: {
+  action: string; // e.g. "Created issues", "Updated issues"
+  ok: number;
+  total: number;
+  okIdentifiers?: string[] | undefined;
+  failures?: Array<{
+    index: number;
+    id?: string | undefined;
+    error: string;
+    code?: string | undefined;
+  }>;
+  nextSteps?: string[] | undefined;
+}): string {
+  const okBit = `${params.action}: ${params.ok} / ${params.total}.`;
+  const idBit = params.okIdentifiers?.length ? ` OK: ${params.okIdentifiers.join(', ')}.` : '';
+  const failBit = params.failures?.length
+    ? ` Failed (${params.failures.length}): ${params.failures
+        .map(
+          (f) =>
+            `${
+              typeof f.index === 'number' ? `item[${f.index}]` : (f.id ?? 'item')
+            } — ${f.error}${f.code ? ` [${f.code}]` : ''}`,
+        )
+        .join('; ')}.`
+    : '';
+  const next = params.nextSteps?.length
+    ? ` Suggested next steps: ${params.nextSteps.join(' ')}`
+    : '';
+  return `${okBit}${idBit}${failBit}${next}`.trim();
+}
+
+export function previewLinesFromItems(
+  items: Array<Record<string, unknown>>,
+  build: (item: Record<string, unknown>) => string,
+): string[] {
+  return items.map((it) => build(it));
+}

@@ -3,31 +3,28 @@
  * Verifies: cycle listing, team filtering, cyclesEnabled check, output shape.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { listCyclesTool } from '../../src/shared/tools/linear/cycles.js';
-import type { ToolContext } from '../../src/shared/tools/types.js';
+import { beforeEach, describe, expect, it } from 'bun:test';
+import { listCycles } from '../../src/tools/list-cycles';
 import {
   createMockLinearClient,
   defaultMockCycles,
   type MockLinearClient,
   resetMockCalls,
-} from '../mocks/linear-client.js';
+} from '../mocks/linear-client';
+import { type CallerContext, type Rows, toolUnderTest } from './harness';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
 // ─────────────────────────────────────────────────────────────────────────────
 
 let mockClient: MockLinearClient;
+const listCyclesTool = toolUnderTest(listCycles, () => mockClient);
 
-const baseContext: ToolContext = {
+const baseContext: CallerContext = {
   sessionId: 'test-session',
   linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
-
-vi.mock('../../src/services/linear/client.js', () => ({
-  getLinearClient: vi.fn(() => Promise.resolve(mockClient)),
-}));
 
 beforeEach(() => {
   mockClient = createMockLinearClient({ cycles: defaultMockCycles });
@@ -122,7 +119,7 @@ describe('list_cycles handler', () => {
     const result = await listCyclesTool.handler({ teamId: 'team-eng' }, baseContext);
 
     const structured = result.structuredContent as Record<string, unknown>;
-    const items = structured.items as Array<Record<string, unknown>>;
+    const items = structured.items as Rows;
 
     // All cycles should belong to the requested team
     for (const item of items) {
@@ -131,10 +128,7 @@ describe('list_cycles handler', () => {
   });
 
   it('respects limit parameter', async () => {
-    const result = await listCyclesTool.handler(
-      { teamId: 'team-eng', limit: 1 },
-      baseContext,
-    );
+    const result = await listCyclesTool.handler({ teamId: 'team-eng', limit: 1 }, baseContext);
 
     const structured = result.structuredContent as Record<string, unknown>;
     expect(structured.limit).toBe(1);
@@ -191,7 +185,7 @@ describe('list_cycles output shape', () => {
     const structured = result.structuredContent as Record<string, unknown>;
 
     expect(structured.items).toBeDefined();
-    const items = structured.items as Array<Record<string, unknown>>;
+    const items = structured.items as Rows;
 
     for (const item of items) {
       expect(item.id).toBeDefined();
@@ -205,7 +199,7 @@ describe('list_cycles output shape', () => {
     const result = await listCyclesTool.handler({ teamId: 'team-eng' }, baseContext);
 
     const structured = result.structuredContent as Record<string, unknown>;
-    const items = structured.items as Array<Record<string, unknown>>;
+    const items = structured.items as Rows;
 
     expect(items.length).toBeGreaterThan(0);
 
@@ -215,7 +209,8 @@ describe('list_cycles output shape', () => {
   });
 
   it('includes pagination info', async () => {
-    const result = await listCyclesTool.handler({ teamId: 'team-eng' }, baseContext);
+    // The handler's own result: JSON drops fields that hold undefined.
+    const result = await listCyclesTool.direct({ teamId: 'team-eng' }, baseContext);
 
     const structured = result.structuredContent as Record<string, unknown>;
     expect('nextCursor' in structured || 'cursor' in structured).toBe(true);
@@ -228,12 +223,12 @@ describe('list_cycles output shape', () => {
 
 describe('list_cycles common workflows', () => {
   it('lists cycles with team ID association', async () => {
-    const result = await listCyclesTool.handler({ teamId: 'team-eng' }, baseContext);
+    const result = await listCyclesTool.direct({ teamId: 'team-eng' }, baseContext);
 
     expect(result.isError).toBeFalsy();
 
     const structured = result.structuredContent as Record<string, unknown>;
-    const items = structured.items as Array<Record<string, unknown>>;
+    const items = structured.items as Rows;
 
     // All cycles should be associated with the requested team
     for (const cycle of items) {
@@ -242,10 +237,10 @@ describe('list_cycles common workflows', () => {
   });
 
   it('provides cycle dates for sprint planning', async () => {
-    const result = await listCyclesTool.handler({ teamId: 'team-eng' }, baseContext);
+    const result = await listCyclesTool.direct({ teamId: 'team-eng' }, baseContext);
 
     const structured = result.structuredContent as Record<string, unknown>;
-    const items = structured.items as Array<Record<string, unknown>>;
+    const items = structured.items as Rows;
 
     expect(items.length).toBeGreaterThan(0);
 
@@ -256,10 +251,10 @@ describe('list_cycles common workflows', () => {
   });
 
   it('provides cycle number for identification', async () => {
-    const result = await listCyclesTool.handler({ teamId: 'team-eng' }, baseContext);
+    const result = await listCyclesTool.direct({ teamId: 'team-eng' }, baseContext);
 
     const structured = result.structuredContent as Record<string, unknown>;
-    const items = structured.items as Array<Record<string, unknown>>;
+    const items = structured.items as Rows;
 
     expect(items.length).toBeGreaterThan(0);
 
@@ -277,7 +272,7 @@ describe('list_cycles common workflows', () => {
 describe('list_cycles edge cases', () => {
   it('returns error when team has cyclesEnabled=false', async () => {
     // team-design has cyclesEnabled=false
-    const result = await listCyclesTool.handler({ teamId: 'team-design' }, baseContext);
+    const result = await listCyclesTool.direct({ teamId: 'team-design' }, baseContext);
 
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('Cycles are disabled');
@@ -295,8 +290,7 @@ describe('list_cycles edge cases', () => {
           states: () => Promise.resolve({ nodes: [] }),
           labels: () => Promise.resolve({ nodes: [] }),
           projects: () => Promise.resolve({ nodes: [] }),
-          cycles: () =>
-            Promise.resolve({ nodes: [], pageInfo: { hasNextPage: false } }),
+          cycles: () => Promise.resolve({ nodes: [], pageInfo: { hasNextPage: false } }),
         },
       ],
       cycles: [],
@@ -307,8 +301,8 @@ describe('list_cycles edge cases', () => {
     expect(result.isError).toBeFalsy();
 
     const structured = result.structuredContent as Record<string, unknown>;
-    const items = structured.items as Array<Record<string, unknown>>;
+    const items = structured.items as Rows;
 
-    expect(items).toEqual([]);
+    expect([...items]).toEqual([]);
   });
 });

@@ -8,33 +8,31 @@
  * - Helpful error messages and zero-result hints
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { listIssuesTool } from '../../src/shared/tools/linear/list-issues.js';
-import { listMyIssuesTool } from '../../src/shared/tools/linear/list-my-issues.js';
-import { workspaceMetadataTool } from '../../src/shared/tools/linear/workspace-metadata.js';
-import type { ToolContext } from '../../src/shared/tools/types.js';
+import { beforeEach, describe, expect, it } from 'bun:test';
+import { getIssues } from '../../src/tools/get-issues';
+import { listIssues } from '../../src/tools/list-issues';
+import { workspaceMetadata } from '../../src/tools/workspace-metadata';
 import {
   createMockLinearClient,
   type MockIssue,
   type MockLinearClient,
   resetMockCalls,
-} from '../mocks/linear-client.js';
+} from '../mocks/linear-client';
+import { type CallerContext, type Rows, toolUnderTest } from './harness';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
 // ─────────────────────────────────────────────────────────────────────────────
 
 let mockClient: MockLinearClient;
+const listIssuesTool = toolUnderTest(listIssues, () => mockClient);
+const workspaceMetadataTool = toolUnderTest(workspaceMetadata, () => mockClient);
 
-const baseContext: ToolContext = {
+const baseContext: CallerContext = {
   sessionId: 'test-session',
   linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
-
-vi.mock('../../src/services/linear/client.js', () => ({
-  getLinearClient: vi.fn(() => Promise.resolve(mockClient)),
-}));
 
 beforeEach(() => {
   mockClient = createMockLinearClient();
@@ -140,7 +138,7 @@ describe('Context Bloat Prevention', () => {
     it('uses reasonable default limit (25) when not specified', async () => {
       mockClient = createMockLinearClient({ issues: generateManyIssues(50) });
 
-      const result = await listIssuesTool.handler({}, baseContext);
+      await listIssuesTool.handler({}, baseContext);
 
       // Verify the query was made with default limit
       const call = mockClient._calls.rawRequest[0];
@@ -170,7 +168,7 @@ describe('Navigating Completed/Cancelled Issues', () => {
 
       // Verify ACTUAL filtering worked - only completed issues returned
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
 
       expect(items.length).toBeGreaterThan(0);
       for (const item of items) {
@@ -187,7 +185,7 @@ describe('Navigating Completed/Cancelled Issues', () => {
       expect(result.isError).toBeFalsy();
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
 
       expect(items.length).toBeGreaterThan(0);
       for (const item of items) {
@@ -204,7 +202,7 @@ describe('Navigating Completed/Cancelled Issues', () => {
       expect(result.isError).toBeFalsy();
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
 
       expect(items.length).toBeGreaterThan(0);
       for (const item of items) {
@@ -221,7 +219,7 @@ describe('Navigating Completed/Cancelled Issues', () => {
       expect(result.isError).toBeFalsy();
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
 
       expect(items.length).toBeGreaterThan(0);
       for (const item of items) {
@@ -318,7 +316,7 @@ describe('Navigating Completed/Cancelled Issues', () => {
     });
 
     it('excludes archived by default', async () => {
-      const result = await listIssuesTool.handler({}, baseContext);
+      await listIssuesTool.handler({}, baseContext);
 
       const call = mockClient._calls.rawRequest[0];
       // includeArchived should be false or undefined (not explicitly true)
@@ -328,10 +326,7 @@ describe('Navigating Completed/Cancelled Issues', () => {
 
   describe('ordering for historical queries', () => {
     it('supports ordering by updatedAt (default, preferred for recency)', async () => {
-      const result = await listIssuesTool.handler(
-        { orderBy: 'updatedAt' },
-        baseContext,
-      );
+      const result = await listIssuesTool.handler({ orderBy: 'updatedAt' }, baseContext);
 
       expect(result.isError).toBeFalsy();
 
@@ -340,10 +335,7 @@ describe('Navigating Completed/Cancelled Issues', () => {
     });
 
     it('supports ordering by createdAt', async () => {
-      const result = await listIssuesTool.handler(
-        { orderBy: 'createdAt' },
-        baseContext,
-      );
+      const result = await listIssuesTool.handler({ orderBy: 'createdAt' }, baseContext);
 
       expect(result.isError).toBeFalsy();
 
@@ -360,13 +352,10 @@ describe('Navigating Completed/Cancelled Issues', () => {
 describe('Workflow Chaining Guidance', () => {
   describe('workspace_metadata as entry point', () => {
     it('provides team IDs for subsequent list_issues calls', async () => {
-      const result = await workspaceMetadataTool.handler(
-        { include: ['teams'] },
-        baseContext,
-      );
+      const result = await workspaceMetadataTool.handler({ include: ['teams'] }, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const teams = structured.teams as Array<Record<string, unknown>>;
+      const teams = structured.teams as Rows;
 
       // Each team should have an ID
       for (const team of teams) {
@@ -386,7 +375,7 @@ describe('Workflow Chaining Guidance', () => {
 
       // States should have id, name, and type
       for (const states of Object.values(statesByTeam)) {
-        for (const state of states as Array<Record<string, unknown>>) {
+        for (const state of states as Rows) {
           expect(state.id).toBeDefined();
           expect(state.name).toBeDefined();
           expect(state.type).toBeDefined();
@@ -395,10 +384,7 @@ describe('Workflow Chaining Guidance', () => {
     });
 
     it('viewer ID enables self-assignment in create/update', async () => {
-      const result = await workspaceMetadataTool.handler(
-        { include: ['profile'] },
-        baseContext,
-      );
+      const result = await workspaceMetadataTool.handler({ include: ['profile'] }, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
       const viewer = structured.viewer as Record<string, unknown>;
@@ -413,7 +399,7 @@ describe('Workflow Chaining Guidance', () => {
       const result = await listIssuesTool.handler({}, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
 
       for (const item of items) {
         expect(item.id).toBeDefined();
@@ -425,7 +411,7 @@ describe('Workflow Chaining Guidance', () => {
       const result = await listIssuesTool.handler({}, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
 
       for (const item of items) {
         expect(item.stateId).toBeDefined();
@@ -436,7 +422,7 @@ describe('Workflow Chaining Guidance', () => {
       const result = await listIssuesTool.handler({}, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
 
       // stateName should be present when state is available
       const hasStateName = items.some((item) => item.stateName !== undefined);
@@ -458,9 +444,9 @@ describe('Zero Results Handling', () => {
     expect(result.isError).toBeFalsy();
 
     const structured = result.structuredContent as Record<string, unknown>;
-    const items = structured.items as Array<Record<string, unknown>>;
+    const items = structured.items as Rows;
 
-    expect(items).toEqual([]);
+    expect([...items]).toEqual([]);
   });
 
   it('shows count as 0 in text output', async () => {
@@ -498,10 +484,7 @@ describe('Zero Results Handling', () => {
   it('shows helpful hints when keyword filter returns no results', async () => {
     mockClient = createMockLinearClient({ issues: [] });
 
-    const result = await listIssuesTool.handler(
-      { q: 'nonexistent query' },
-      baseContext,
-    );
+    const result = await listIssuesTool.handler({ q: 'nonexistent query' }, baseContext);
 
     const textContent = result.content[0].text;
     // Should suggest trying different keywords
@@ -563,10 +546,8 @@ describe('Reasonable Limits', () => {
   });
 
   it('get_issues batch limited to 50 items', async () => {
-    // Import get_issues schema to verify batch limit
-    const { getIssuesTool } = await import(
-      '../../src/shared/tools/linear/get-issues.js'
-    );
+    // The get_issues schema, to verify the batch limit
+    const getIssuesTool = toolUnderTest(getIssues, () => mockClient);
 
     // Should accept exactly 50 items
     const valid = getIssuesTool.inputSchema.safeParse({

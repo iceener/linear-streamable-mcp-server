@@ -3,33 +3,30 @@
  * Verifies: comment listing, adding comments, batch operations, output shapes.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  addCommentsTool,
-  listCommentsTool,
-} from '../../src/shared/tools/linear/comments.js';
-import type { ToolContext } from '../../src/shared/tools/types.js';
+import { beforeEach, describe, expect, it } from 'bun:test';
+import { addComments } from '../../src/tools/add-comments';
+import { listComments } from '../../src/tools/list-comments';
 import {
   createMockLinearClient,
   type MockLinearClient,
   resetMockCalls,
-} from '../mocks/linear-client.js';
+} from '../mocks/linear-client';
+import { type CallerContext, type Rows, toolUnderTest } from './harness';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
 // ─────────────────────────────────────────────────────────────────────────────
 
 let mockClient: MockLinearClient;
+const addCommentsTool = toolUnderTest(addComments, () => mockClient);
+const listCommentsTool = toolUnderTest(listComments, () => mockClient);
+const updateCommentsTool = toolUnderTest(updateComments, () => mockClient);
 
-const baseContext: ToolContext = {
+const baseContext: CallerContext = {
   sessionId: 'test-session',
   linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
-
-vi.mock('../../src/services/linear/client.js', () => ({
-  getLinearClient: vi.fn(() => Promise.resolve(mockClient)),
-}));
 
 beforeEach(() => {
   mockClient = createMockLinearClient();
@@ -83,10 +80,7 @@ describe('list_comments tool', () => {
 
   describe('handler behavior', () => {
     it('returns comments for specified issue', async () => {
-      const result = await listCommentsTool.handler(
-        { issueId: 'issue-001' },
-        baseContext,
-      );
+      const result = await listCommentsTool.handler({ issueId: 'issue-001' }, baseContext);
 
       expect(result.isError).toBeFalsy();
 
@@ -122,13 +116,10 @@ describe('list_comments tool', () => {
 
   describe('output shape', () => {
     it('matches ListCommentsOutputSchema', async () => {
-      const result = await listCommentsTool.handler(
-        { issueId: 'issue-001' },
-        baseContext,
-      );
+      const result = await listCommentsTool.handler({ issueId: 'issue-001' }, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
 
       for (const item of items) {
         expect(item.id).toBeDefined();
@@ -138,13 +129,10 @@ describe('list_comments tool', () => {
     });
 
     it('includes comment metadata (body, user, dates)', async () => {
-      const result = await listCommentsTool.handler(
-        { issueId: 'issue-001' },
-        baseContext,
-      );
+      const result = await listCommentsTool.handler({ issueId: 'issue-001' }, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
 
       expect(items.length).toBeGreaterThan(0);
 
@@ -160,10 +148,8 @@ describe('list_comments tool', () => {
     });
 
     it('includes pagination info', async () => {
-      const result = await listCommentsTool.handler(
-        { issueId: 'issue-001' },
-        baseContext,
-      );
+      // The handler's own result: JSON drops fields that hold undefined.
+      const result = await listCommentsTool.direct({ issueId: 'issue-001' }, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
       expect('nextCursor' in structured || 'cursor' in structured).toBe(true);
@@ -172,16 +158,13 @@ describe('list_comments tool', () => {
 
   describe('common workflows', () => {
     it('reads discussion history on an issue', async () => {
-      const result = await listCommentsTool.handler(
-        { issueId: 'issue-001' },
-        baseContext,
-      );
+      const result = await listCommentsTool.handler({ issueId: 'issue-001' }, baseContext);
 
       expect(result.isError).toBeFalsy();
 
       // Verify comments are actually returned
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
       expect(items.length).toBeGreaterThan(0);
 
       // Verify text output mentions comment count
@@ -353,7 +336,7 @@ describe('add_comments tool', () => {
       );
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const results = structured.results as Array<Record<string, unknown>>;
+      const results = structured.results as Rows;
 
       expect(results[0].ok).toBe(true);
       expect(results[0].id).toBeDefined();
@@ -374,7 +357,7 @@ describe('add_comments tool', () => {
       expect(structured.results).toBeDefined();
       expect(structured.summary).toBeDefined();
 
-      const results = structured.results as Array<Record<string, unknown>>;
+      const results = structured.results as Rows;
       expect(Array.isArray(results)).toBe(true);
 
       const summary = structured.summary as Record<string, unknown>;
@@ -461,10 +444,7 @@ describe('add_comments tool', () => {
 describe('comments workflow integration', () => {
   it('list comments, then add new comment', async () => {
     // Step 1: Check existing comments
-    const listResult = await listCommentsTool.handler(
-      { issueId: 'issue-001' },
-      baseContext,
-    );
+    const listResult = await listCommentsTool.handler({ issueId: 'issue-001' }, baseContext);
 
     expect(listResult.isError).toBeFalsy();
 
@@ -484,7 +464,7 @@ describe('comments workflow integration', () => {
 // update_comments Tool Tests
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { updateCommentsTool } from '../../src/shared/tools/linear/comments.js';
+import { updateComments } from '../../src/tools/update-comments';
 
 describe('update_comments tool', () => {
   describe('metadata', () => {

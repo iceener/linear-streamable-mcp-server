@@ -3,32 +3,28 @@
  * Verifies: input validation, batch fetching, output shape.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getIssuesTool } from '../../src/shared/tools/linear/get-issues.js';
-import type { ToolContext } from '../../src/shared/tools/types.js';
+import { beforeEach, describe, expect, it, type vi } from 'bun:test';
+import { getIssues } from '../../src/tools/get-issues';
 import getIssuesFixtures from '../fixtures/tool-inputs/get-issues.json';
 import {
   createMockLinearClient,
   type MockLinearClient,
   resetMockCalls,
-} from '../mocks/linear-client.js';
+} from '../mocks/linear-client';
+import { type CallerContext, type Rows, toolUnderTest } from './harness';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
 // ─────────────────────────────────────────────────────────────────────────────
 
 let mockClient: MockLinearClient;
+const getIssuesTool = toolUnderTest(getIssues, () => mockClient);
 
-const baseContext: ToolContext = {
+const baseContext: CallerContext = {
   sessionId: 'test-session',
   linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
-
-// Mock the getLinearClient function
-vi.mock('../../src/services/linear/client.js', () => ({
-  getLinearClient: vi.fn(() => Promise.resolve(mockClient)),
-}));
 
 beforeEach(() => {
   mockClient = createMockLinearClient();
@@ -89,7 +85,7 @@ describe('get_issues handler', () => {
     const structured = result.structuredContent as Record<string, unknown>;
     expect(structured.results).toBeDefined();
 
-    const results = structured.results as Array<Record<string, unknown>>;
+    const results = structured.results as Rows;
     expect(results.length).toBe(1);
     expect(results[0].success).toBe(true);
     expect(results[0].issue).toBeDefined();
@@ -105,7 +101,7 @@ describe('get_issues handler', () => {
     expect(result.isError).toBeFalsy();
 
     const structured = result.structuredContent as Record<string, unknown>;
-    const results = structured.results as Array<Record<string, unknown>>;
+    const results = structured.results as Rows;
 
     expect(results[0].success).toBe(true);
     expect((results[0].issue as Record<string, unknown>).identifier).toBe('ENG-123');
@@ -123,7 +119,7 @@ describe('get_issues handler', () => {
     expect(result.isError).toBeFalsy();
 
     const structured = result.structuredContent as Record<string, unknown>;
-    const results = structured.results as Array<Record<string, unknown>>;
+    const results = structured.results as Rows;
 
     expect(results.length).toBe(3);
     expect(mockClient.issue).toHaveBeenCalledTimes(3);
@@ -133,7 +129,7 @@ describe('get_issues handler', () => {
     const result = await getIssuesTool.handler({ ids: ['issue-001'] }, baseContext);
 
     const structured = result.structuredContent as Record<string, unknown>;
-    const results = structured.results as Array<Record<string, unknown>>;
+    const results = structured.results as Rows;
     const issue = results[0].issue as Record<string, unknown>;
 
     expect(issue).toBeDefined();
@@ -142,10 +138,7 @@ describe('get_issues handler', () => {
   });
 
   it('includes summary with ok/failed counts', async () => {
-    const result = await getIssuesTool.handler(
-      { ids: ['issue-001', 'issue-002'] },
-      baseContext,
-    );
+    const result = await getIssuesTool.handler({ ids: ['issue-001', 'issue-002'] }, baseContext);
 
     const structured = result.structuredContent as Record<string, unknown>;
     const summary = structured.summary as { succeeded: number; failed: number };
@@ -168,7 +161,7 @@ describe('get_issues output shape', () => {
     expect(structured.results).toBeDefined();
     expect(structured.summary).toBeDefined();
 
-    const results = structured.results as Array<Record<string, unknown>>;
+    const results = structured.results as Rows;
     for (const r of results) {
       expect(typeof r.requestedId).toBe('string');
       expect(typeof r.success).toBe('boolean');
@@ -182,7 +175,7 @@ describe('get_issues output shape', () => {
     const result = await getIssuesTool.handler({ ids: ['issue-001'] }, baseContext);
 
     const structured = result.structuredContent as Record<string, unknown>;
-    const results = structured.results as Array<Record<string, unknown>>;
+    const results = structured.results as Rows;
     const issue = results[0].issue as Record<string, unknown>;
 
     // Required identification fields
@@ -215,7 +208,7 @@ describe('get_issues error handling', () => {
     expect(result.isError).toBeFalsy();
 
     const structured = result.structuredContent as Record<string, unknown>;
-    const results = structured.results as Array<Record<string, unknown>>;
+    const results = structured.results as Rows;
 
     expect(results[0].success).toBe(false);
     expect(results[0].error).toBeDefined();
@@ -238,10 +231,7 @@ describe('get_issues error handling', () => {
         attachments: () => Promise.resolve({ nodes: [] }),
       });
 
-    const result = await getIssuesTool.handler(
-      { ids: ['bad-id', 'issue-002'] },
-      baseContext,
-    );
+    const result = await getIssuesTool.handler({ ids: ['bad-id', 'issue-002'] }, baseContext);
 
     const structured = result.structuredContent as Record<string, unknown>;
     const summary = structured.summary as { succeeded: number; failed: number };
@@ -260,11 +250,9 @@ describe('get_issues error handling', () => {
     expect(result.isError).toBeFalsy();
 
     const structured = result.structuredContent as Record<string, unknown>;
-    const results = structured.results as Array<Record<string, unknown>>;
+    const results = structured.results as Rows;
 
     expect(results[0].success).toBe(false);
-    expect((results[0].error as Record<string, unknown>).message).toContain(
-      'Network error',
-    );
+    expect((results[0].error as Record<string, unknown>).message).toContain('Network error');
   });
 });

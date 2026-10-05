@@ -3,31 +3,29 @@
  * Verifies: listing teams, listing users, pagination, output shapes.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { listTeamsTool } from '../../src/shared/tools/linear/list-teams.js';
-import { listUsersTool } from '../../src/shared/tools/linear/list-users.js';
-import type { ToolContext } from '../../src/shared/tools/types.js';
+import { beforeEach, describe, expect, it } from 'bun:test';
+import { listTeams } from '../../src/tools/list-teams';
+import { listUsers } from '../../src/tools/list-users';
 import {
   createMockLinearClient,
   type MockLinearClient,
   resetMockCalls,
-} from '../mocks/linear-client.js';
+} from '../mocks/linear-client';
+import { type CallerContext, type Rows, toolUnderTest } from './harness';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Setup
 // ─────────────────────────────────────────────────────────────────────────────
 
 let mockClient: MockLinearClient;
+const listTeamsTool = toolUnderTest(listTeams, () => mockClient);
+const listUsersTool = toolUnderTest(listUsers, () => mockClient);
 
-const baseContext: ToolContext = {
+const baseContext: CallerContext = {
   sessionId: 'test-session',
   linearProviderAccessToken: 'test-token',
   authStrategy: 'bearer',
 };
-
-vi.mock('../../src/services/linear/client.js', () => ({
-  getLinearClient: vi.fn(() => Promise.resolve(mockClient)),
-}));
 
 beforeEach(() => {
   mockClient = createMockLinearClient();
@@ -72,10 +70,7 @@ describe('list_teams tool', () => {
     });
 
     it('supports pagination with cursor', async () => {
-      const result = await listTeamsTool.handler(
-        { cursor: 'test-cursor' },
-        baseContext,
-      );
+      const result = await listTeamsTool.handler({ cursor: 'test-cursor' }, baseContext);
 
       expect(result.isError).toBeFalsy();
 
@@ -89,7 +84,7 @@ describe('list_teams tool', () => {
       const result = await listTeamsTool.handler({}, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
 
       for (const item of items) {
         expect(item.id).toBeDefined();
@@ -103,7 +98,7 @@ describe('list_teams tool', () => {
       const result = await listTeamsTool.handler({}, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
 
       // At least one team should have a key (like ENG, DES)
       const hasKey = items.some((team) => team.key !== undefined);
@@ -111,7 +106,8 @@ describe('list_teams tool', () => {
     });
 
     it('includes pagination info', async () => {
-      const result = await listTeamsTool.handler({}, baseContext);
+      // The handler's own result: JSON drops fields that hold undefined.
+      const result = await listTeamsTool.direct({}, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
       expect('nextCursor' in structured || 'cursor' in structured).toBe(true);
@@ -123,7 +119,7 @@ describe('list_teams tool', () => {
       const result = await listTeamsTool.handler({}, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
 
       expect(items.length).toBeGreaterThan(0);
 
@@ -183,10 +179,7 @@ describe('list_users tool', () => {
     });
 
     it('supports pagination with cursor', async () => {
-      const result = await listUsersTool.handler(
-        { cursor: 'test-cursor' },
-        baseContext,
-      );
+      const result = await listUsersTool.handler({ cursor: 'test-cursor' }, baseContext);
 
       expect(result.isError).toBeFalsy();
 
@@ -200,7 +193,7 @@ describe('list_users tool', () => {
       const result = await listUsersTool.handler({}, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
 
       for (const item of items) {
         expect(item.id).toBeDefined();
@@ -213,7 +206,7 @@ describe('list_users tool', () => {
       const result = await listUsersTool.handler({}, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
 
       expect(items.length).toBeGreaterThan(0);
 
@@ -225,7 +218,8 @@ describe('list_users tool', () => {
     });
 
     it('includes pagination info', async () => {
-      const result = await listUsersTool.handler({}, baseContext);
+      // The handler's own result: JSON drops fields that hold undefined.
+      const result = await listUsersTool.direct({}, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
       expect('nextCursor' in structured || 'cursor' in structured).toBe(true);
@@ -237,7 +231,7 @@ describe('list_users tool', () => {
       const result = await listUsersTool.handler({}, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
 
       expect(items.length).toBeGreaterThan(0);
 
@@ -251,7 +245,7 @@ describe('list_users tool', () => {
       const result = await listUsersTool.handler({}, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
 
       // Verify we get actual user data for LLM to reference
       expect(items.length).toBeGreaterThan(0);
@@ -264,7 +258,7 @@ describe('list_users tool', () => {
       const result = await listUsersTool.handler({}, baseContext);
 
       const structured = result.structuredContent as Record<string, unknown>;
-      const items = structured.items as Array<Record<string, unknown>>;
+      const items = structured.items as Rows;
 
       // All users should have ID (required for assigneeId)
       for (const user of items) {
@@ -287,7 +281,7 @@ describe('teams and users workflow integration', () => {
   it('list teams returns IDs usable for list_issues teamId filter', async () => {
     const teamsResult = await listTeamsTool.handler({}, baseContext);
     const teamsStructured = teamsResult.structuredContent as Record<string, unknown>;
-    const teams = teamsStructured.items as Array<Record<string, unknown>>;
+    const teams = teamsStructured.items as Rows;
 
     expect(teams.length).toBeGreaterThan(0);
 
@@ -306,7 +300,7 @@ describe('teams and users workflow integration', () => {
   it('list users returns IDs usable for assigneeId in create/update_issues', async () => {
     const usersResult = await listUsersTool.handler({}, baseContext);
     const usersStructured = usersResult.structuredContent as Record<string, unknown>;
-    const users = usersStructured.items as Array<Record<string, unknown>>;
+    const users = usersStructured.items as Rows;
 
     expect(users.length).toBeGreaterThan(0);
 
